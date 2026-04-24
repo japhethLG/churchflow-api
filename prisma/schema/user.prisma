@@ -1,0 +1,16 @@
+// Global user — one row per Firebase Auth account.
+model User {
+  id           String    @id @default(uuid())
+  firebaseUid  String    @unique
+  email        String    @unique
+  displayName  String
+  photoUrl     String?
+  isSuperAdmin Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  memberships Member[]
+
+  @@index([email])
+}

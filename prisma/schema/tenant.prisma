@@ -1,0 +1,27 @@
+// Tenant = Church.
+model Tenant {
+  id                     String    @id @default(uuid())
+  // URL-safe stable identifier (e.g. "bbbc", "first-baptist").
+  // Used in frontend URLs like /[slug]/admin/*, in tenantMemberships
+  // custom claims, and as an alternative to `id` in most API paths.
+  slug                   String    @unique
+  name                   String
+  address                String?
+  phone                  String?
+  email                  String?
+  logoUrl                String?
+  currency               String    @default("USD")
+  timezone               String    @default("UTC")
+  fiscalYearStart        Int       @default(1)
+  customTransactionTypes String[]  @default([])
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  deletedAt              DateTime?
+  createdBy              String
+
+  members      Member[]
+  campaigns    Campaign[]
+  transactions Transaction[]
+  invitations  Invitation[]
+  auditEvents  AuditEvent[]
+}

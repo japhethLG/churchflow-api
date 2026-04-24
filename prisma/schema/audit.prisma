@@ -1,0 +1,32 @@
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  RESTORE
+  ROLE_CHANGE
+  MEMBERSHIP_CHANGE
+}
+
+// Append-only audit log. One row per mutating HTTP action performed by an
+// authenticated user on tenant-scoped data (or on a tenant itself for
+// super-admin actions).
+model AuditEvent {
+  id         String      @id @default(uuid())
+  tenantId   String?     // null for platform-level events (tenant create)
+  actorUid   String      // Firebase UID of the user who performed the action
+  actorEmail String?
+  action     AuditAction
+  entity     String      // "Tenant", "Member", "Campaign", "Pledge", "Transaction", etc.
+  entityId   String
+  // Summary + structured diff. `diff` is Prisma JSON — repository layer is
+  // responsible for shaping it (e.g. { before, after, changed: [...] }).
+  summary    String?
+  diff       Json?
+  createdAt  DateTime    @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@index([actorUid, createdAt])
+  @@index([entity, entityId])
+}

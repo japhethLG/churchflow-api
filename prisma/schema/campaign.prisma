@@ -1,0 +1,53 @@
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+// A fundraising initiative: building fund, mission trip, etc. The overall
+// goal is the sum of CampaignItem.targetAmount — no explicit goal column.
+model Campaign {
+  id          String         @id @default(uuid())
+  tenantId    String
+  title       String
+  description String?
+  currency    String
+  // Null = open-ended campaign (e.g. ongoing building fund).
+  deadline    DateTime?
+  status      CampaignStatus @default(ACTIVE)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  deletedAt   DateTime?
+  createdBy   String
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id])
+  items        CampaignItem[]
+  pledges      Pledge[]
+  transactions Transaction[]
+
+  @@index([tenantId, status])
+}
+
+// A breakdown line within a campaign ("Roofing", "Gates", etc.). A pledge
+// can attach to a specific item or to the campaign as a whole.
+model CampaignItem {
+  id           String    @id @default(uuid())
+  tenantId     String
+  campaignId   String
+  title        String
+  description  String?
+  targetAmount Decimal   @db.Decimal(14, 2)
+  // Null = inherit campaign.deadline (resolved in API layer, not stored).
+  deadline     DateTime?
+  sortOrder    Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  campaign     Campaign      @relation(fields: [campaignId], references: [id])
+  pledges      Pledge[]
+  transactions Transaction[]
+
+  @@index([tenantId, campaignId])
+}

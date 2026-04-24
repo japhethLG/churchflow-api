@@ -1,0 +1,32 @@
+enum PledgeStatus {
+  ACTIVE
+  FULFILLED
+  CANCELLED
+}
+
+// A member's commitment to give toward a campaign (optionally an item).
+// Actual payments arrive as Transactions with pledgeId set.
+model Pledge {
+  id             String       @id @default(uuid())
+  tenantId       String
+  campaignId     String
+  // Null = pledge applies to the overall campaign, not any single item.
+  campaignItemId String?
+  memberId       String
+  pledgedAmount  Decimal      @db.Decimal(14, 2)
+  status         PledgeStatus @default(ACTIVE)
+  note           String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  createdBy      String
+
+  campaign     Campaign      @relation(fields: [campaignId], references: [id])
+  campaignItem CampaignItem? @relation(fields: [campaignItemId], references: [id])
+  member       Member        @relation(fields: [memberId], references: [id])
+  transactions Transaction[]
+
+  @@index([tenantId, campaignId])
+  @@index([tenantId, memberId])
+  @@index([tenantId, campaignItemId])
+}

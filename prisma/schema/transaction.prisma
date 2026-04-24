@@ -1,0 +1,54 @@
+enum TransactionType {
+  TITHE
+  OFFERING
+  MISSION_GIVING
+  FIRST_FRUIT
+  COMMITMENT
+  DONATION
+  OTHER
+}
+
+enum PaymentMethod {
+  CASH
+  CHECK
+  BANK_TRANSFER
+  ONLINE
+  MOBILE_MONEY
+  OTHER
+}
+
+model Transaction {
+  id              String          @id @default(uuid())
+  tenantId        String
+  memberId        String?
+  // Optional campaign attribution. When pledgeId is set, campaignId and
+  // campaignItemId must match the pledge (enforced in the feature service).
+  campaignId      String?
+  campaignItemId  String?
+  pledgeId        String?
+  type            TransactionType
+  customType      String?
+  amount          Decimal         @db.Decimal(14, 2)
+  currency        String
+  date            DateTime
+  note            String?
+  paymentMethod   PaymentMethod
+  referenceNumber String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?
+  createdBy       String
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  member       Member?       @relation(fields: [memberId], references: [id])
+  campaign     Campaign?     @relation(fields: [campaignId], references: [id])
+  campaignItem CampaignItem? @relation(fields: [campaignItemId], references: [id])
+  pledge       Pledge?       @relation(fields: [pledgeId], references: [id])
+
+  @@index([tenantId, date])
+  @@index([tenantId, memberId, date])
+  @@index([tenantId, type, date])
+  @@index([tenantId, campaignId])
+  @@index([tenantId, campaignItemId])
+  @@index([tenantId, pledgeId])
+}

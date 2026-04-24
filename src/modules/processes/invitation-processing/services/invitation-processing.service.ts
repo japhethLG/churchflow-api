@@ -1,0 +1,235 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+
+import {
+  AuditAction,
+  InvitationStatus,
+  MemberRole,
+  type Invitation,
+} from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+
+import {
+  EMAIL_PROVIDER,
+  type IEmailProvider,
+} from '@infrastructure/email/email.interface';
+import { UserClaimsService } from '@infrastructure/firebase-auth/user-claims.service';
+
+import { AuditService } from '@modules/core/audit/services/audit.service';
+import { InvitationService } from '@modules/core/invitation/services/invitation.service';
+import { MemberService } from '@modules/core/member/services/member.service';
+import { TenantService } from '@modules/core/tenant/services/tenant.service';
+import { UserService } from '@modules/core/user/services/user.service';
+
+const INVITATION_TTL_DAYS = 7;
+
+// Rate-limit: at most 20 invitations per tenant per hour. Prevents
+// spammy/runaway admin behaviour and keeps email provider costs bounded.
+const INVITATION_RATE_WINDOW_MS = 60 * 60 * 1000;
+const INVITATION_RATE_MAX = 20;
+
+export interface IssueInvitationInput {
+  tenantId: string;
+  email: string;
+  role: MemberRole;
+  invitedBy: string;
+  memberId?: string;
+}
+
+@Injectable()
+export class InvitationProcessingService {
+  private readonly logger = new Logger(InvitationProcessingService.name);
+
+  constructor(
+    private readonly invitationService: InvitationService,
+    private readonly memberService: MemberService,
+    private readonly userService: UserService,
+    private readonly tenantService: TenantService,
+    private readonly userClaims: UserClaimsService,
+    private readonly auditService: AuditService,
+    private readonly config: ConfigService,
+    @Inject(EMAIL_PROVIDER) private readonly email: IEmailProvider,
+  ) {}
+
+  async issue(input: IssueInvitationInput): Promise<Invitation> {
+    const tenant = await this.tenantService.getById(input.tenantId);
+
+    // Rate limit.
+    const recent = await this.invitationService.countRecentForTenant(
+      input.tenantId,
+      INVITATION_RATE_WINDOW_MS,
+    );
+    if (recent >= INVITATION_RATE_MAX) {
+      throw new ForbiddenException(
+        'Invitation rate limit exceeded for this church. Try again in an hour.',
+      );
+    }
+
+    // De-dup: if there's a pending invite for the same email + tenant,
+    // reject rather than silently replacing.
+    const existing = await this.invitationService.findPendingByTenantAndEmail(
+      input.tenantId,
+      input.email,
+    );
+    if (existing) {
+      throw new ConflictException(
+        'A pending invitation already exists for this email in this church.',
+      );
+    }
+
+    const token = randomUUID();
+    const expiresAt = new Date(Date.now() + INVITATION_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+    const invitation = await this.invitationService.create({
+      tenantId: input.tenantId,
+      email: input.email,
+      role: input.role,
+      invitedBy: input.invitedBy,
+      memberId: input.memberId,
+      token,
+      expiresAt,
+    });
+
+    await this.sendInvitationEmail(invitation, tenant.name, tenant.slug);
+
+    await this.auditService.record({
+      tenantId: input.tenantId,
+      actorUid: input.invitedBy,
+      action: AuditAction.CREATE,
+      entity: 'Invitation',
+      entityId: invitation.id,
+      summary: `Invited ${input.email} as ${input.role}`,
+    });
+
+    return invitation;
+  }
+
+  async accept(token: string, firebaseUid: string): Promise<Invitation> {
+    const invitation = await this.invitationService.getByToken(token);
+
+    if (invitation.status !== InvitationStatus.PENDING) {
+      throw new BadRequestException('Invitation is no longer pending');
+    }
+
+    if (invitation.expiresAt < new Date()) {
+      await this.invitationService.markExpired(invitation.id);
+      throw new BadRequestException('Invitation expired');
+    }
+
+    const user = await this.userService.findByFirebaseUid(firebaseUid);
+    if (!user) throw new BadRequestException('User profile must exist before accepting invitation');
+
+    if (invitation.memberId) {
+      await this.memberService.linkUser(invitation.tenantId, invitation.memberId, user.id);
+    } else {
+      await this.memberService.create({
+        tenantId: invitation.tenantId,
+        userId: user.id,
+        createdBy: invitation.invitedBy,
+        firstName: user.displayName.split(' ')[0] ?? user.displayName,
+        lastName: user.displayName.split(' ').slice(1).join(' ') || user.displayName,
+        email: user.email,
+        role: invitation.role,
+      });
+    }
+
+    const accepted = await this.invitationService.markAccepted(invitation.id);
+
+    // Rebuild custom claims so the user's next token refresh picks up
+    // their new membership. Frontend calls refreshSession() right after
+    // accept to materialise this into a new session cookie.
+    await this.userClaims.refreshFor(firebaseUid);
+
+    await this.auditService.record({
+      tenantId: invitation.tenantId,
+      actorUid: firebaseUid,
+      actorEmail: user.email,
+      action: AuditAction.MEMBERSHIP_CHANGE,
+      entity: 'Invitation',
+      entityId: invitation.id,
+      summary: `Invitation accepted by ${user.email}`,
+    });
+
+    return accepted;
+  }
+
+  async cancel(token: string, actorUid: string): Promise<Invitation> {
+    const invitation = await this.invitationService.getByToken(token);
+    const cancelled = await this.invitationService.markCancelled(invitation.id);
+
+    await this.auditService.record({
+      tenantId: invitation.tenantId,
+      actorUid,
+      action: AuditAction.DELETE,
+      entity: 'Invitation',
+      entityId: invitation.id,
+      summary: 'Invitation cancelled',
+    });
+
+    return cancelled;
+  }
+
+  async listPending(tenantId: string): Promise<Invitation[]> {
+    return this.invitationService.findPendingForTenant(tenantId);
+  }
+
+  // Public lookup for the acceptance page — so the invitee sees the
+  // church name before signing in. Returns the invitation without
+  // side effects; does not expose the raw token details beyond what's
+  // needed to render the page.
+  async lookup(token: string): Promise<Invitation> {
+    const invitation = await this.invitationService.getByToken(token);
+    if (invitation.status !== InvitationStatus.PENDING) {
+      throw new BadRequestException('Invitation is no longer pending');
+    }
+    if (invitation.expiresAt < new Date()) {
+      throw new BadRequestException('Invitation expired');
+    }
+    return invitation;
+  }
+
+  private async sendInvitationEmail(
+    invitation: Invitation,
+    tenantName: string,
+    tenantSlug: string,
+  ): Promise<void> {
+    const appUrl = this.config.get<string>('APP_URL') ?? 'http://localhost:3000';
+    const link = `${appUrl}/invite/${invitation.token}`;
+
+    const subject = `You've been invited to ${tenantName}`;
+    const html = `
+      <p>Hi,</p>
+      <p>You've been invited to join <strong>${escapeHtml(tenantName)}</strong> on ChurchFlow as ${invitation.role === MemberRole.ADMIN ? 'an admin' : 'a member'}.</p>
+      <p><a href="${link}">Click here to accept the invitation</a></p>
+      <p>This link expires on ${invitation.expiresAt.toISOString().slice(0, 10)}.</p>
+      <p>If you weren't expecting this email, you can ignore it.</p>
+      <p style="color:#888;font-size:12px">Tenant: ${tenantSlug}</p>
+    `;
+    const text = `You've been invited to ${tenantName} on ChurchFlow. Accept: ${link} (expires ${invitation.expiresAt.toISOString().slice(0, 10)})`;
+
+    try {
+      await this.email.send({ to: invitation.email, subject, html, text });
+    } catch (err) {
+      // Email failures are non-fatal — the admin can reshare the link
+      // directly. Log so operators know something is wrong with the
+      // provider.
+      this.logger.error(`invitation email failed: ${(err as Error).message}`);
+    }
+  }
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}

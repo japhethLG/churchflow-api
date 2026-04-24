@@ -1,0 +1,206 @@
+import { BadRequestException, Injectable } from '@nestjs/common';
+
+import { AuditAction, type Campaign, type CampaignItem } from '@prisma/client';
+
+import type {
+  AuthUser,
+  TenantContext,
+} from '@infrastructure/firebase-auth/types/auth-user.type';
+
+import { AuditService } from '@modules/core/audit/services/audit.service';
+import { CampaignItemService } from '@modules/core/campaign-item/services/campaign-item.service';
+import type { CampaignFilters } from '@modules/core/campaign/campaign.types';
+import type { CampaignListResult } from '@modules/core/campaign/repository/campaign.repository';
+import { CampaignService } from '@modules/core/campaign/services/campaign.service';
+import { TenantService } from '@modules/core/tenant/services/tenant.service';
+
+import type {
+  CreateCampaignItemRequestDto,
+  CreateCampaignRequestDto,
+  UpdateCampaignItemRequestDto,
+  UpdateCampaignRequestDto,
+} from '../dto/campaign.request.dto';
+import type {
+  CampaignItemProgressDto,
+  CampaignProgressResponseDto,
+} from '../dto/campaign.response.dto';
+
+export interface CampaignWithItems extends Campaign {
+  items: CampaignItem[];
+}
+
+@Injectable()
+export class CampaignFeatureService {
+  constructor(
+    private readonly campaignService: CampaignService,
+    private readonly campaignItemService: CampaignItemService,
+    private readonly tenantService: TenantService,
+    private readonly auditService: AuditService,
+  ) {}
+
+  async create(
+    user: AuthUser,
+    tenant: TenantContext,
+    data: CreateCampaignRequestDto,
+  ): Promise<Campaign> {
+    const tenantRow = await this.tenantService.getById(tenant.tenantId);
+    const campaign = await this.campaignService.create({
+      ...data,
+      tenantId: tenant.tenantId,
+      createdBy: user.firebaseUid,
+      currency: data.currency ?? tenantRow.currency,
+    });
+    await this.auditService.record({
+      tenantId: tenant.tenantId,
+      actorUid: user.firebaseUid,
+      actorEmail: user.email,
+      action: AuditAction.CREATE,
+      entity: 'Campaign',
+      entityId: campaign.id,
+      summary: `Created campaign "${campaign.title}"`,
+    });
+    return campaign;
+  }
+
+  async list(tenant: TenantContext, filters: CampaignFilters): Promise<CampaignListResult> {
+    return this.campaignService.getAll(tenant.tenantId, filters);
+  }
+
+  async getById(tenant: TenantContext, id: string): Promise<CampaignWithItems> {
+    const campaign = await this.campaignService.getById(tenant.tenantId, id);
+    const items = await this.campaignItemService.getAll(tenant.tenantId, { campaignId: id });
+    return { ...campaign, items };
+  }
+
+  async update(
+    user: AuthUser,
+    tenant: TenantContext,
+    id: string,
+    data: UpdateCampaignRequestDto,
+  ): Promise<Campaign> {
+    // Currency is immutable after create — changing it would invalidate
+    // pledged amounts. Strip silently.
+    const { currency: _currency, ...rest } = data;
+    const campaign = await this.campaignService.update(tenant.tenantId, id, rest);
+    await this.auditService.record({
+      tenantId: tenant.tenantId,
+      actorUid: user.firebaseUid,
+      actorEmail: user.email,
+      action: AuditAction.UPDATE,
+      entity: 'Campaign',
+      entityId: campaign.id,
+      diff: { after: rest },
+    });
+    return campaign;
+  }
+
+  async delete(
+    user: AuthUser,
+    tenant: TenantContext,
+    id: string,
+  ): Promise<Campaign> {
+    const campaign = await this.campaignService.delete(tenant.tenantId, id);
+    await this.auditService.record({
+      tenantId: tenant.tenantId,
+      actorUid: user.firebaseUid,
+      actorEmail: user.email,
+      action: AuditAction.DELETE,
+      entity: 'Campaign',
+      entityId: campaign.id,
+    });
+    return campaign;
+  }
+
+  async restore(
+    user: AuthUser,
+    tenant: TenantContext,
+    id: string,
+  ): Promise<Campaign> {
+    const campaign = await this.campaignService.restore(tenant.tenantId, id);
+    await this.auditService.record({
+      tenantId: tenant.tenantId,
+      actorUid: user.firebaseUid,
+      actorEmail: user.email,
+      action: AuditAction.RESTORE,
+      entity: 'Campaign',
+      entityId: campaign.id,
+    });
+    return campaign;
+  }
+
+  async addItem(
+    tenant: TenantContext,
+    campaignId: string,
+    data: CreateCampaignItemRequestDto,
+  ): Promise<CampaignItem> {
+    await this.campaignService.getById(tenant.tenantId, campaignId);
+    return this.campaignItemService.create({
+      ...data,
+      tenantId: tenant.tenantId,
+      campaignId,
+    });
+  }
+
+  async updateItem(
+    tenant: TenantContext,
+    campaignId: string,
+    itemId: string,
+    data: UpdateCampaignItemRequestDto,
+  ): Promise<CampaignItem> {
+    const item = await this.campaignItemService.getById(tenant.tenantId, itemId);
+    if (item.campaignId !== campaignId) {
+      throw new BadRequestException('Item does not belong to this campaign');
+    }
+    return this.campaignItemService.update(tenant.tenantId, itemId, data);
+  }
+
+  async deleteItem(
+    tenant: TenantContext,
+    campaignId: string,
+    itemId: string,
+  ): Promise<CampaignItem> {
+    const item = await this.campaignItemService.getById(tenant.tenantId, itemId);
+    if (item.campaignId !== campaignId) {
+      throw new BadRequestException('Item does not belong to this campaign');
+    }
+    return this.campaignItemService.delete(tenant.tenantId, itemId);
+  }
+
+  // Per-campaign progress summary: goal (sum of items), pledged totals,
+  // raised totals (transactions), and a per-item breakdown. Used by the
+  // admin campaign-detail view and the member pledge-flow.
+  async progress(
+    tenant: TenantContext,
+    campaignId: string,
+  ): Promise<CampaignProgressResponseDto> {
+    const { items } = await this.getById(tenant, campaignId);
+    const aggregates = await this.campaignService.getProgress(tenant.tenantId, campaignId);
+
+    const pledgesByItem = new Map(
+      aggregates.byItemPledges.map((r) => [r.itemId, r]),
+    );
+    const txByItem = new Map(
+      aggregates.byItemTransactions.map((r) => [r.itemId, r]),
+    );
+
+    const itemProgress: CampaignItemProgressDto[] = items.map((item) => ({
+      itemId: item.id,
+      title: item.title,
+      targetAmount: Number(item.targetAmount),
+      pledgedAmount: Number(pledgesByItem.get(item.id)?.pledgedAmount ?? 0),
+      raisedAmount: Number(txByItem.get(item.id)?.raisedAmount ?? 0),
+      pledgeCount: pledgesByItem.get(item.id)?.pledgeCount ?? 0,
+    }));
+
+    const goalAmount = items.reduce((sum, it) => sum + Number(it.targetAmount), 0);
+
+    return {
+      campaignId,
+      goalAmount,
+      pledgedAmount: aggregates.pledgedAmount,
+      raisedAmount: aggregates.raisedAmount,
+      pledgeCount: aggregates.pledgeCount,
+      items: itemProgress,
+    };
+  }
+}

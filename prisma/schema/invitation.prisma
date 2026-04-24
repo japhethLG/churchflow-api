@@ -1,0 +1,27 @@
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  CANCELLED
+}
+
+model Invitation {
+  id         String           @id @default(uuid())
+  tenantId   String
+  email      String
+  role       MemberRole
+  memberId   String?
+  status     InvitationStatus @default(PENDING)
+  token      String           @unique
+  invitedBy  String
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  deletedAt  DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([email, status])
+  @@index([tenantId, status])
+}
