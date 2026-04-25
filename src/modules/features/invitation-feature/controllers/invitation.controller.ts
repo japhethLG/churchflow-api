@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -100,6 +102,29 @@ export class InvitationController {
   ): Promise<InvitationResponseDto> {
     return this.invitationProcessing.accept(
       body.token,
+      user.firebaseUid,
+    ) as unknown as Promise<InvitationResponseDto>;
+  }
+
+  @ApiBearerAuth('Bearer')
+  @TenantRoles('ADMIN')
+  @UseGuards(TenantGuard)
+  @Patch('tenants/:tenantId/invitations/:invitationId/cancel')
+  @ApiOperation({ summary: 'Cancel a pending invitation (admin only)' })
+  @ApiParam({ name: 'tenantId', description: 'Tenant UUID or slug' })
+  @ApiParam({ name: 'invitationId', description: 'Invitation UUID' })
+  @ApiOkResponse({ type: InvitationResponseDto })
+  async cancel(
+    @CurrentUser() user: AuthUser,
+    @CurrentTenant() tenant: TenantContext,
+    @Param('invitationId') invitationId: string,
+  ): Promise<InvitationResponseDto> {
+    // Look up the invitation by ID and cancel it.
+    // The processing service's cancel() expects a token, but we want to
+    // accept an ID from the admin panel. Resolve through the service.
+    return this.invitationProcessing.cancelById(
+      tenant.tenantId,
+      invitationId,
       user.firebaseUid,
     ) as unknown as Promise<InvitationResponseDto>;
   }

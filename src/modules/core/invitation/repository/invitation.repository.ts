@@ -18,6 +18,10 @@ export class InvitationRepository {
     return this.prisma.invitation.findFirst({ where: { token, deletedAt: null } });
   }
 
+  async findById(id: string): Promise<Invitation | null> {
+    return this.prisma.invitation.findFirst({ where: { id, deletedAt: null } });
+  }
+
   async findPendingByEmail(email: string): Promise<Invitation[]> {
     return this.prisma.invitation.findMany({
       where: { email, status: InvitationStatus.PENDING, deletedAt: null },

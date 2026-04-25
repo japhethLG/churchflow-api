@@ -19,6 +19,12 @@ export class InvitationService {
     return invitation;
   }
 
+  async getById(id: string): Promise<Invitation> {
+    const invitation = await this.invitationRepository.findById(id);
+    if (!invitation) throw new NotFoundException('Invitation not found');
+    return invitation;
+  }
+
   async findPendingByEmail(email: string): Promise<Invitation[]> {
     return this.invitationRepository.findPendingByEmail(email);
   }

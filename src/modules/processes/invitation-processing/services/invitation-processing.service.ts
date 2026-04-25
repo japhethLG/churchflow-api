@@ -196,6 +196,31 @@ export class InvitationProcessingService {
     return cancelled;
   }
 
+  async cancelById(tenantId: string, invitationId: string, actorUid: string): Promise<Invitation> {
+    const invitation = await this.invitationService.getById(invitationId);
+
+    if (invitation.tenantId !== tenantId) {
+      throw new ForbiddenException('Invitation does not belong to this tenant');
+    }
+
+    if (invitation.status !== InvitationStatus.PENDING) {
+      throw new BadRequestException('Invitation is no longer pending');
+    }
+
+    const cancelled = await this.invitationService.markCancelled(invitation.id);
+
+    await this.auditService.record({
+      tenantId: invitation.tenantId,
+      actorUid,
+      action: AuditAction.DELETE,
+      entity: 'Invitation',
+      entityId: invitation.id,
+      summary: `Invitation to ${invitation.email} cancelled`,
+    });
+
+    return cancelled;
+  }
+
   async listPending(tenantId: string): Promise<Invitation[]> {
     return this.invitationService.findPendingForTenant(tenantId);
   }
