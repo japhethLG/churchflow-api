@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Get,
-  Param,
   Post,
   Query,
   UseGuards,
@@ -36,6 +35,7 @@ import {
 import {
   InvitationListResponseDto,
   InvitationResponseDto,
+  LookupInvitationResponseDto,
 } from '../dto/invitation.response.dto';
 
 @ApiTags('invitations')
@@ -85,9 +85,9 @@ export class InvitationController {
   @Get('invitations/lookup')
   @ApiOperation({ summary: 'Look up an invitation by token (public)' })
   @ApiQuery({ name: 'token' })
-  @ApiOkResponse({ type: InvitationResponseDto })
-  async lookup(@Query('token') token: string): Promise<InvitationResponseDto> {
-    return this.invitationProcessing.lookup(token) as unknown as Promise<InvitationResponseDto>;
+  @ApiOkResponse({ type: LookupInvitationResponseDto })
+  async lookup(@Query('token') token: string): Promise<LookupInvitationResponseDto> {
+    return this.invitationProcessing.lookup(token) as unknown as Promise<LookupInvitationResponseDto>;
   }
 
   @ApiBearerAuth('Bearer')

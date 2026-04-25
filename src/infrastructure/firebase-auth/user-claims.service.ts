@@ -38,18 +38,19 @@ export class UserClaimsService {
 
     const members = await this.prisma.member.findMany({
       where: { userId: user.id, deletedAt: null, tenant: { deletedAt: null } },
-      include: { tenant: { select: { slug: true } } },
+      include: { tenant: { select: { slug: true, name: true } } },
     });
 
     const memberships = members.map((m) => ({
       slug: m.tenant.slug,
+      name: m.tenant.name,
       memberId: m.id,
       role: m.role,
     }));
 
     const tenantMemberships: Record<string, TenantMembershipClaim> = {};
     for (const m of memberships) {
-      tenantMemberships[m.slug] = { memberId: m.memberId, role: m.role };
+      tenantMemberships[m.slug] = { memberId: m.memberId, role: m.role, name: m.name };
     }
 
     await this.firebase.setCustomClaims(firebaseUid, {

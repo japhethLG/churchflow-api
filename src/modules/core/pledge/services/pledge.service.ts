@@ -33,4 +33,12 @@ export class PledgeService {
     await this.getById(tenantId, id);
     return this.pledgeRepository.softDelete(tenantId, id);
   }
+
+  async reassignMember(
+    tenantId: string,
+    fromMemberId: string,
+    toMemberId: string,
+  ): Promise<number> {
+    return this.pledgeRepository.reassignMember(tenantId, fromMemberId, toMemberId);
+  }
 }

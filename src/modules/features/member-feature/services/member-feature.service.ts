@@ -12,11 +12,17 @@ import { AuditService } from '@modules/core/audit/services/audit.service';
 import { MemberService } from '@modules/core/member/services/member.service';
 import type { MemberListResult } from '@modules/core/member/repository/member.repository';
 import { UserService } from '@modules/core/user/services/user.service';
+import {
+  MemberMergingService,
+  type MergePreview,
+  type MergeResult,
+} from '@modules/processes/member-merging/services/member-merging.service';
 
 import type {
   CreateMemberRequestDto,
   MemberFiltersRequestDto,
   UpdateMemberRequestDto,
+  UpdateMyMembershipRequestDto,
 } from '../dto/member.request.dto';
 
 @Injectable()
@@ -26,7 +32,31 @@ export class MemberFeatureService {
     private readonly userService: UserService,
     private readonly userClaims: UserClaimsService,
     private readonly auditService: AuditService,
+    private readonly memberMerging: MemberMergingService,
   ) {}
+
+  async previewMerge(
+    tenant: TenantContext,
+    keepId: string,
+    dropId: string,
+  ): Promise<MergePreview> {
+    return this.memberMerging.preview({ tenantId: tenant.tenantId, keepId, dropId });
+  }
+
+  async merge(
+    user: AuthUser,
+    tenant: TenantContext,
+    keepId: string,
+    dropId: string,
+  ): Promise<MergeResult> {
+    return this.memberMerging.merge({
+      tenantId: tenant.tenantId,
+      keepId,
+      dropId,
+      actorUid: user.firebaseUid,
+      actorEmail: user.email,
+    });
+  }
 
   async create(
     user: AuthUser,
@@ -69,6 +99,29 @@ export class MemberFeatureService {
       throw new NotFoundException('No member row for current user in this tenant');
     }
     return this.memberService.getById(tenant.tenantId, tenant.memberId);
+  }
+
+  async updateMe(
+    user: AuthUser,
+    tenant: TenantContext,
+    data: UpdateMyMembershipRequestDto,
+  ): Promise<Member> {
+    if (!tenant.memberId) {
+      throw new NotFoundException('No member row for current user in this tenant');
+    }
+    const before = await this.memberService.getById(tenant.tenantId, tenant.memberId);
+    const member = await this.memberService.update(tenant.tenantId, tenant.memberId, data);
+    await this.auditService.record({
+      tenantId: tenant.tenantId,
+      actorUid: user.firebaseUid,
+      actorEmail: user.email,
+      action: AuditAction.UPDATE,
+      entity: 'Member',
+      entityId: member.id,
+      summary: 'Self-updated profile',
+      diff: { before, after: data },
+    });
+    return member;
   }
 
   async getById(tenant: TenantContext, id: string): Promise<Member> {

@@ -84,6 +84,18 @@ export class InvitationProcessingService {
       );
     }
 
+    // If memberId is set, the invite is "claim this temp profile". Validate
+    // it: must belong to this tenant, must not already be linked to a user.
+    // Throws 404 if missing — getById is tenant-scoped.
+    if (input.memberId) {
+      const member = await this.memberService.getById(input.tenantId, input.memberId);
+      if (member.userId) {
+        throw new ConflictException(
+          'This member is already linked to a user account; nothing to claim.',
+        );
+      }
+    }
+
     const token = randomUUID();
     const expiresAt = new Date(Date.now() + INVITATION_TTL_DAYS * 24 * 60 * 60 * 1000);
 
@@ -127,7 +139,15 @@ export class InvitationProcessingService {
     if (!user) throw new BadRequestException('User profile must exist before accepting invitation');
 
     if (invitation.memberId) {
+      // Claim flow. Link the existing temp Member to the signed-in user
+      // and overwrite the email with the verified SSO address — the temp
+      // email was admin-entered and can drift; SSO is authoritative.
+      // Other fields (name/phone/address) are reconciled by the user
+      // themselves on the welcome onboarding screen.
       await this.memberService.linkUser(invitation.tenantId, invitation.memberId, user.id);
+      await this.memberService.update(invitation.tenantId, invitation.memberId, {
+        email: user.email,
+      });
     } else {
       await this.memberService.create({
         tenantId: invitation.tenantId,
@@ -184,7 +204,9 @@ export class InvitationProcessingService {
   // church name before signing in. Returns the invitation without
   // side effects; does not expose the raw token details beyond what's
   // needed to render the page.
-  async lookup(token: string): Promise<Invitation> {
+  async lookup(
+    token: string,
+  ): Promise<Invitation & { tenantName: string; tenantSlug: string; inviterDisplayName: string | null }> {
     const invitation = await this.invitationService.getByToken(token);
     if (invitation.status !== InvitationStatus.PENDING) {
       throw new BadRequestException('Invitation is no longer pending');
@@ -192,7 +214,16 @@ export class InvitationProcessingService {
     if (invitation.expiresAt < new Date()) {
       throw new BadRequestException('Invitation expired');
     }
-    return invitation;
+    const [tenant, inviter] = await Promise.all([
+      this.tenantService.getById(invitation.tenantId),
+      this.userService.findByFirebaseUid(invitation.invitedBy),
+    ]);
+    return {
+      ...invitation,
+      tenantName: tenant.name,
+      tenantSlug: tenant.slug,
+      inviterDisplayName: inviter?.displayName ?? null,
+    };
   }
 
   private async sendInvitationEmail(

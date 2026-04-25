@@ -117,6 +117,21 @@ export class TransactionRepository {
     return this.prisma.transaction.update({ where: { id }, data: { deletedAt: new Date() } });
   }
 
+  // Reassign every transaction belonging to one member to another. Used by
+  // the merge flow. Soft-deleted rows are intentionally moved too — keeps
+  // the audit trail intact even if either side has historical deletions.
+  async reassignMember(
+    tenantId: string,
+    fromMemberId: string,
+    toMemberId: string,
+  ): Promise<number> {
+    const result = await this.prisma.transaction.updateMany({
+      where: { tenantId, memberId: fromMemberId },
+      data: { memberId: toMemberId },
+    });
+    return result.count;
+  }
+
   private buildWhere(tenantId: string, filters: TransactionFilters): Prisma.TransactionWhereInput {
     return {
       tenantId,

@@ -59,4 +59,16 @@ export class PledgeRepository {
   async softDelete(_tenantId: string, id: string): Promise<Pledge> {
     return this.prisma.pledge.update({ where: { id }, data: { deletedAt: new Date() } });
   }
+
+  async reassignMember(
+    tenantId: string,
+    fromMemberId: string,
+    toMemberId: string,
+  ): Promise<number> {
+    const result = await this.prisma.pledge.updateMany({
+      where: { tenantId, memberId: fromMemberId },
+      data: { memberId: toMemberId },
+    });
+    return result.count;
+  }
 }

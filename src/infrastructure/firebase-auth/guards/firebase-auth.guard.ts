@@ -52,8 +52,9 @@ export class FirebaseAuthGuard implements CanActivate {
       const entry = value as Record<string, unknown>;
       const memberId = typeof entry.memberId === 'string' ? entry.memberId : undefined;
       const role = entry.role === 'ADMIN' || entry.role === 'USER' ? entry.role : undefined;
+      const name = typeof entry.name === 'string' ? entry.name : slug;
       if (memberId && role) {
-        out[slug] = { memberId, role };
+        out[slug] = { memberId, role, name };
       }
     }
     return out;

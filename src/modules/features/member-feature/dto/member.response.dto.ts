@@ -17,3 +17,30 @@ export class MemberListResponseDto {
   @ApiProperty({ type: MetaDto })
   meta!: MetaDto;
 }
+
+export class MergeMembersPreviewResponseDto {
+  @Expose() @Type(() => MemberResponseDto) @ApiProperty({ type: MemberResponseDto })
+  keep!: MemberResponseDto;
+
+  @Expose() @Type(() => MemberResponseDto) @ApiProperty({ type: MemberResponseDto })
+  drop!: MemberResponseDto;
+
+  @Expose() @ApiProperty({ example: 12 })
+  transactionsToMove!: number;
+
+  @Expose() @ApiProperty({ example: 3 })
+  pledgesToMove!: number;
+
+  @Expose()
+  @ApiProperty({
+    type: [String],
+    enum: ['email', 'phone', 'address', 'userId'],
+    example: ['email', 'userId'],
+  })
+  fieldsCopiedFromDrop!: Array<'email' | 'phone' | 'address' | 'userId'>;
+}
+
+export class MergeMembersResponseDto extends MergeMembersPreviewResponseDto {
+  @Expose() @Type(() => MemberResponseDto) @ApiProperty({ type: MemberResponseDto })
+  merged!: MemberResponseDto;
+}

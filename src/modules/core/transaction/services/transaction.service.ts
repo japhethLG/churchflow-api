@@ -48,4 +48,12 @@ export class TransactionService {
     await this.getById(tenantId, id);
     return this.transactionRepository.softDelete(tenantId, id);
   }
+
+  async reassignMember(
+    tenantId: string,
+    fromMemberId: string,
+    toMemberId: string,
+  ): Promise<number> {
+    return this.transactionRepository.reassignMember(tenantId, fromMemberId, toMemberId);
+  }
 }

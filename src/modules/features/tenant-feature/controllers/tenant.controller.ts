@@ -31,7 +31,11 @@ import {
   RenameTenantRequestDto,
   UpdateTenantRequestDto,
 } from '../dto/tenant.request.dto';
-import { TenantListResponseDto, TenantResponseDto } from '../dto/tenant.response.dto';
+import {
+  TenantListResponseDto,
+  TenantListItemDto,
+  TenantResponseDto,
+} from '../dto/tenant.response.dto';
 import { TenantFeatureService } from '../services/tenant-feature.service';
 
 @ApiTags('tenants')
@@ -53,11 +57,11 @@ export class TenantController {
 
   @Roles('SUPER_ADMIN')
   @Get()
-  @ApiOperation({ summary: 'List all churches (super admin only)' })
+  @ApiOperation({ summary: 'List all churches with per-tenant aggregates (super admin only)' })
   @ApiOkResponse({ type: TenantListResponseDto })
   async list(): Promise<TenantListResponseDto> {
-    const items = await this.tenantFeatureService.list();
-    return { items } as TenantListResponseDto;
+    const items: TenantListItemDto[] = await this.tenantFeatureService.list();
+    return { items };
   }
 
   // Slug suggestion helper for the create-tenant UI. Not gated — the UI

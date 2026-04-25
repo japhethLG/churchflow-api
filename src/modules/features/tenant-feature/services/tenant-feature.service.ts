@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 
-import { AuditAction, type Tenant } from '@prisma/client';
+import { AuditAction, MemberRole, type Tenant } from '@prisma/client';
+
+import { PrismaClientService } from '@infrastructure/prisma-client/prisma-client.service';
 
 import type { AuthUser } from '@infrastructure/firebase-auth/types/auth-user.type';
 
@@ -12,12 +14,14 @@ import type {
   RenameTenantRequestDto,
   UpdateTenantRequestDto,
 } from '../dto/tenant.request.dto';
+import type { TenantAdminPreviewDto, TenantListItemDto } from '../dto/tenant.response.dto';
 
 @Injectable()
 export class TenantFeatureService {
   constructor(
     private readonly tenantService: TenantService,
     private readonly auditService: AuditService,
+    private readonly prisma: PrismaClientService,
   ) {}
 
   async create(user: AuthUser, data: CreateTenantRequestDto): Promise<Tenant> {
@@ -37,8 +41,45 @@ export class TenantFeatureService {
     return tenant;
   }
 
-  async list(): Promise<Tenant[]> {
-    return this.tenantService.getAll();
+  async list(): Promise<TenantListItemDto[]> {
+    // Include soft-deleted so super-admin can see and restore archived tenants.
+    const tenants = await this.prisma.tenant.findMany({ orderBy: { createdAt: 'desc' } });
+    return Promise.all(tenants.map((t) => this.enrichTenant(t)));
+  }
+
+  private async enrichTenant(tenant: Tenant): Promise<TenantListItemDto> {
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+    const [adminCount, memberCount, adminsRaw, giftsMtd] = await Promise.all([
+      this.prisma.member.count({ where: { tenantId: tenant.id, deletedAt: null, role: MemberRole.ADMIN } }),
+      this.prisma.member.count({ where: { tenantId: tenant.id, deletedAt: null } }),
+      this.prisma.member.findMany({
+        where: { tenantId: tenant.id, deletedAt: null, role: MemberRole.ADMIN },
+        include: { user: { select: { displayName: true, photoUrl: true } } },
+        orderBy: { createdAt: 'asc' },
+        take: 3,
+      }),
+      this.prisma.transaction.aggregate({
+        where: { tenantId: tenant.id, deletedAt: null, date: { gte: monthStart } },
+        _sum: { amount: true },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const adminsPreview: TenantAdminPreviewDto[] = adminsRaw.map((m) => ({
+      memberId: m.id,
+      displayName: m.user?.displayName ?? `${m.firstName} ${m.lastName}`,
+      photoUrl: m.user?.photoUrl ?? null,
+    }));
+
+    return {
+      ...tenant,
+      adminCount,
+      memberCount,
+      adminsPreview,
+      giftsMtdCount: giftsMtd._count._all,
+      giftsMtdTotal: Number(giftsMtd._sum.amount ?? 0),
+    };
   }
 
   async getByIdOrSlug(idOrSlug: string): Promise<Tenant> {

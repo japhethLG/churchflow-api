@@ -4,9 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import type { IEmailProvider, SendEmailInput } from './email.interface';
 
 // Resend provider. Uses the HTTP API directly to avoid pulling the full
-// SDK (NestJS + SWC is fussy about ESM-only deps). If RESEND_API_KEY is
-// unset, the EmailModule falls back to ConsoleEmailProvider — callers
-// never see this class.
+// SDK (NestJS + SWC is fussy about ESM-only deps).
 @Injectable()
 export class ResendEmailProvider implements IEmailProvider {
   private readonly logger = new Logger('Email:resend');
@@ -14,8 +12,17 @@ export class ResendEmailProvider implements IEmailProvider {
   private readonly from: string;
 
   constructor(config: ConfigService) {
-    this.apiKey = config.get<string>('RESEND_API_KEY') ?? '';
-    this.from = config.get<string>('EMAIL_FROM') ?? 'no-reply@churchflow.app';
+    const apiKey = config.get<string>('RESEND_API_KEY');
+    if (!apiKey) {
+      throw new Error('RESEND_API_KEY is not defined');
+    }
+    this.apiKey = apiKey;
+
+    const from = config.get<string>('RESEND_FROM_EMAIL');
+    if (!from) {
+      throw new Error('RESEND_FROM_EMAIL is not defined');
+    }
+    this.from = from;
   }
 
   async send(input: SendEmailInput): Promise<void> {

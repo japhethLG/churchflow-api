@@ -9,4 +9,5 @@ export interface CreateUserInput {
 export interface UpdateUserInput {
   displayName?: string;
   photoUrl?: string | null;
+  isSuperAdmin?: boolean;
 }

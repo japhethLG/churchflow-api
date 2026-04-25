@@ -3,6 +3,7 @@ export type TenantRole = 'ADMIN' | 'USER';
 export interface TenantMembershipClaim {
   memberId: string;
   role: TenantRole;
+  name: string; // tenant display name (e.g. "First Baptist Church")
 }
 
 // Decoded Firebase token → normalized app-level user shape.

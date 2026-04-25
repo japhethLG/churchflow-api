@@ -18,6 +18,7 @@ import { TenantCoreModule } from '@modules/core/tenant/tenant.module';
 import { TransactionCoreModule } from '@modules/core/transaction/transaction.module';
 import { UserCoreModule } from '@modules/core/user/user.module';
 
+import { AdminFeatureModule } from '@modules/features/admin-feature/admin-feature.module';
 import { AuthFeatureModule } from '@modules/features/auth-feature/auth-feature.module';
 import { CampaignFeatureModule } from '@modules/features/campaign-feature/campaign-feature.module';
 import { InvitationFeatureModule } from '@modules/features/invitation-feature/invitation-feature.module';
@@ -27,6 +28,7 @@ import { TenantFeatureModule } from '@modules/features/tenant-feature/tenant-fea
 import { TransactionFeatureModule } from '@modules/features/transaction-feature/transaction-feature.module';
 
 import { InvitationProcessingModule } from '@modules/processes/invitation-processing/invitation-processing.module';
+import { MemberMergingModule } from '@modules/processes/member-merging/member-merging.module';
 
 import { MainController } from './main.controller';
 
@@ -44,9 +46,10 @@ const coreModules = [
   AuditCoreModule,
 ];
 
-const processModules = [InvitationProcessingModule];
+const processModules = [InvitationProcessingModule, MemberMergingModule];
 
 const featureModules = [
+  AdminFeatureModule,
   AuthFeatureModule,
   TenantFeatureModule,
   MemberFeatureModule,

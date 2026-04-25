@@ -32,11 +32,15 @@ import { DeleteResponseDto } from '@shared/dto/delete-response.dto';
 import {
   CreateMemberRequestDto,
   MemberFiltersRequestDto,
+  MergeMembersRequestDto,
   UpdateMemberRequestDto,
+  UpdateMyMembershipRequestDto,
 } from '../dto/member.request.dto';
 import {
   MemberListResponseDto,
   MemberResponseDto,
+  MergeMembersPreviewResponseDto,
+  MergeMembersResponseDto,
 } from '../dto/member.response.dto';
 import { MemberFeatureService } from '../services/member-feature.service';
 
@@ -94,6 +98,25 @@ export class MemberController {
     return this.memberFeatureService.getMe(tenant) as unknown as Promise<MemberResponseDto>;
   }
 
+  @Patch('me')
+  @ApiOperation({
+    summary: 'Update the current user’s own member profile',
+    description:
+      'Members can update their own first/last name, phone, address. Email is bound to SSO and not editable here. Role + status are admin-only.',
+  })
+  @ApiOkResponse({ type: MemberResponseDto })
+  async updateMe(
+    @CurrentUser() user: AuthUser,
+    @CurrentTenant() tenant: TenantContext,
+    @Body() body: UpdateMyMembershipRequestDto,
+  ): Promise<MemberResponseDto> {
+    return this.memberFeatureService.updateMe(
+      user,
+      tenant,
+      body,
+    ) as unknown as Promise<MemberResponseDto>;
+  }
+
   @TenantRoles('ADMIN')
   @Get(':id')
   @ApiOperation({ summary: 'Get a member by id (admin only)' })
@@ -137,5 +160,49 @@ export class MemberController {
   ): Promise<DeleteResponseDto> {
     const deleted = await this.memberFeatureService.delete(user, tenant, id);
     return { id: deleted.id };
+  }
+
+  @TenantRoles('ADMIN')
+  @Get(':id/merge-preview')
+  @ApiOperation({
+    summary: 'Preview a merge: shows what will move from drop → keep without mutating',
+    description:
+      'Use this to render a confirmation modal. Pass the candidate to drop via ?dropId=. Returns transaction/pledge counts and the field-copy plan.',
+  })
+  @ApiParam({ name: 'id', description: 'Keep member id (the surviving member)' })
+  @ApiOkResponse({ type: MergeMembersPreviewResponseDto })
+  async mergePreview(
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') keepId: string,
+    @Query('dropId') dropId: string,
+  ): Promise<MergeMembersPreviewResponseDto> {
+    return this.memberFeatureService.previewMerge(
+      tenant,
+      keepId,
+      dropId,
+    ) as unknown as Promise<MergeMembersPreviewResponseDto>;
+  }
+
+  @TenantRoles('ADMIN')
+  @Post(':id/merge')
+  @ApiOperation({
+    summary: 'Merge another member into this one',
+    description:
+      'Reassigns transactions and pledges from the drop member to this one, copies any contact fields the keeper is missing, then soft-deletes the drop member.',
+  })
+  @ApiParam({ name: 'id', description: 'Keep member id (the surviving member)' })
+  @ApiOkResponse({ type: MergeMembersResponseDto })
+  async merge(
+    @CurrentUser() user: AuthUser,
+    @CurrentTenant() tenant: TenantContext,
+    @Param('id') keepId: string,
+    @Body() body: MergeMembersRequestDto,
+  ): Promise<MergeMembersResponseDto> {
+    return this.memberFeatureService.merge(
+      user,
+      tenant,
+      keepId,
+      body.dropId,
+    ) as unknown as Promise<MergeMembersResponseDto>;
   }
 }
