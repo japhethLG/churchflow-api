@@ -80,7 +80,7 @@ export class AdminFeatureService {
     }
 
     if (query.tenantId) {
-      where.members = {
+      where.memberships = {
         some: { tenantId: query.tenantId, deletedAt: null },
       };
     }
