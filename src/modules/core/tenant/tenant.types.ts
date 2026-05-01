@@ -6,9 +6,6 @@ export interface CreateTenantInput {
   phone?: string | null;
   email?: string | null;
   logoUrl?: string | null;
-  currency?: string;
-  timezone?: string;
-  fiscalYearStart?: number;
   customTransactionTypes?: string[];
 }
 
@@ -21,8 +18,5 @@ export interface UpdateTenantInput {
   phone?: string | null;
   email?: string | null;
   logoUrl?: string | null;
-  currency?: string;
-  timezone?: string;
-  fiscalYearStart?: number;
   customTransactionTypes?: string[];
 }

@@ -2,11 +2,11 @@ import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsDate, IsEnum, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 
-import { PaymentMethod, TransactionType } from '@prisma/client';
+import { TransactionType } from '@prisma/client';
+
 
 import {
   AMOUNT_EXAMPLE,
-  CURRENCY_EXAMPLE,
   DATE_UTC_EXAMPLE,
   ID_EXAMPLE,
   REFERENCE_NUMBER_EXAMPLE,
@@ -23,22 +23,10 @@ export class CreateTransactionRequestDto {
   @Min(0)
   amount!: number;
 
-  @ApiPropertyOptional({
-    example: CURRENCY_EXAMPLE,
-    description: 'ISO 4217. Defaults to the tenant currency when omitted.',
-  })
-  @IsOptional()
-  @IsString()
-  currency?: string;
-
   @ApiProperty({ example: DATE_UTC_EXAMPLE })
   @Type(() => Date)
   @IsDate()
   date!: Date;
-
-  @ApiProperty({ enum: PaymentMethod, example: PaymentMethod.CASH })
-  @IsEnum(PaymentMethod)
-  paymentMethod!: PaymentMethod;
 
   @ApiPropertyOptional({ example: ID_EXAMPLE })
   @IsOptional()

@@ -8,15 +8,6 @@ enum TransactionType {
   OTHER
 }
 
-enum PaymentMethod {
-  CASH
-  CHECK
-  BANK_TRANSFER
-  ONLINE
-  MOBILE_MONEY
-  OTHER
-}
-
 model Transaction {
   id              String          @id @default(uuid())
   tenantId        String
@@ -29,10 +20,8 @@ model Transaction {
   type            TransactionType
   customType      String?
   amount          Decimal         @db.Decimal(14, 2)
-  currency        String
   date            DateTime
   note            String?
-  paymentMethod   PaymentMethod
   referenceNumber String?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt

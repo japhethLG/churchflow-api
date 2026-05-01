@@ -12,7 +12,6 @@ import { CampaignItemService } from '@modules/core/campaign-item/services/campai
 import type { CampaignFilters } from '@modules/core/campaign/campaign.types';
 import type { CampaignListResult } from '@modules/core/campaign/repository/campaign.repository';
 import { CampaignService } from '@modules/core/campaign/services/campaign.service';
-import { TenantService } from '@modules/core/tenant/services/tenant.service';
 
 import type {
   CreateCampaignItemRequestDto,
@@ -34,7 +33,6 @@ export class CampaignFeatureService {
   constructor(
     private readonly campaignService: CampaignService,
     private readonly campaignItemService: CampaignItemService,
-    private readonly tenantService: TenantService,
     private readonly auditService: AuditService,
   ) {}
 
@@ -43,12 +41,10 @@ export class CampaignFeatureService {
     tenant: TenantContext,
     data: CreateCampaignRequestDto,
   ): Promise<Campaign> {
-    const tenantRow = await this.tenantService.getById(tenant.tenantId);
     const campaign = await this.campaignService.create({
       ...data,
       tenantId: tenant.tenantId,
       createdBy: user.firebaseUid,
-      currency: data.currency ?? tenantRow.currency,
     });
     await this.auditService.record({
       tenantId: tenant.tenantId,
@@ -78,10 +74,7 @@ export class CampaignFeatureService {
     id: string,
     data: UpdateCampaignRequestDto,
   ): Promise<Campaign> {
-    // Currency is immutable after create — changing it would invalidate
-    // pledged amounts. Strip silently.
-    const { currency: _currency, ...rest } = data;
-    const campaign = await this.campaignService.update(tenant.tenantId, id, rest);
+    const campaign = await this.campaignService.update(tenant.tenantId, id, data);
     await this.auditService.record({
       tenantId: tenant.tenantId,
       actorUid: user.firebaseUid,
@@ -89,7 +82,7 @@ export class CampaignFeatureService {
       action: AuditAction.UPDATE,
       entity: 'Campaign',
       entityId: campaign.id,
-      diff: { after: rest },
+      diff: { after: data },
     });
     return campaign;
   }

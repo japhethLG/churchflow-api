@@ -4,14 +4,12 @@ import { Expose } from 'class-transformer';
 import {
   ADDRESS_EXAMPLE,
   CHURCH_NAME_EXAMPLE,
-  CURRENCY_EXAMPLE,
   DATE_UTC_EXAMPLE,
   EMAIL_EXAMPLE,
   FIREBASE_UID_EXAMPLE,
   ID_EXAMPLE,
   PHONE_NUMBER_EXAMPLE,
   TENANT_SLUG_EXAMPLE,
-  TIMEZONE_EXAMPLE,
   URL_EXAMPLE,
 } from '../dto-examples';
 
@@ -47,18 +45,6 @@ export class TenantDto {
   @Expose()
   @ApiPropertyOptional({ example: URL_EXAMPLE, nullable: true })
   logoUrl!: string | null;
-
-  @Expose()
-  @ApiProperty({ example: CURRENCY_EXAMPLE, description: 'ISO 4217 currency code' })
-  currency!: string;
-
-  @Expose()
-  @ApiProperty({ example: TIMEZONE_EXAMPLE, description: 'IANA timezone' })
-  timezone!: string;
-
-  @Expose()
-  @ApiProperty({ example: 1, description: 'Fiscal year start month (1-12)' })
-  fiscalYearStart!: number;
 
   @Expose()
   @ApiProperty({

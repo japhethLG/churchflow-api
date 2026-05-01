@@ -12,7 +12,6 @@ import { CampaignItemService } from '@modules/core/campaign-item/services/campai
 import { CampaignService } from '@modules/core/campaign/services/campaign.service';
 import { MemberService } from '@modules/core/member/services/member.service';
 import { PledgeService } from '@modules/core/pledge/services/pledge.service';
-import { TenantService } from '@modules/core/tenant/services/tenant.service';
 import type {
   TransactionListResult,
   TransactionSummaryResult,
@@ -30,7 +29,6 @@ import type {
 export class TransactionFeatureService {
   constructor(
     private readonly transactionService: TransactionService,
-    private readonly tenantService: TenantService,
     private readonly memberService: MemberService,
     private readonly campaignService: CampaignService,
     private readonly campaignItemService: CampaignItemService,
@@ -43,8 +41,6 @@ export class TransactionFeatureService {
     tenant: TenantContext,
     data: CreateTransactionRequestDto,
   ): Promise<Transaction> {
-    const tenantRow = await this.tenantService.getById(tenant.tenantId);
-
     if (data.memberId) {
       await this.memberService.getById(tenant.tenantId, data.memberId);
     }
@@ -55,7 +51,6 @@ export class TransactionFeatureService {
       ...data,
       ...resolved,
       tenantId: tenant.tenantId,
-      currency: data.currency ?? tenantRow.currency,
       createdBy: user.firebaseUid,
     });
     await this.auditService.record({
@@ -65,7 +60,7 @@ export class TransactionFeatureService {
       action: AuditAction.CREATE,
       entity: 'Transaction',
       entityId: tx.id,
-      summary: `Recorded ${Number(tx.amount)} ${tx.currency} (${tx.type})`,
+      summary: `Recorded ${Number(tx.amount)} (${tx.type})`,
     });
     return tx;
   }
@@ -135,15 +130,13 @@ export class TransactionFeatureService {
   async summary(
     tenant: TenantContext,
     months?: number,
-  ): Promise<TransactionSummaryResult & { currency: string }> {
-    const tenantRow = await this.tenantService.getById(tenant.tenantId);
+  ): Promise<TransactionSummaryResult> {
     const window = Math.max(1, Math.min(months ?? 12, 60));
     const now = new Date();
     const dateTo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
     const dateFrom = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - window + 1, 1));
 
-    const result = await this.transactionService.summary(tenant.tenantId, dateFrom, dateTo);
-    return { ...result, currency: tenantRow.currency };
+    return this.transactionService.summary(tenant.tenantId, dateFrom, dateTo);
   }
 
   // Validates + normalizes campaignId / campaignItemId / pledgeId so that:

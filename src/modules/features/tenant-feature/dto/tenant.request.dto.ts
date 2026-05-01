@@ -2,23 +2,18 @@ import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs
 import {
   IsArray,
   IsEmail,
-  IsInt,
   IsOptional,
   IsString,
   IsUrl,
   Matches,
-  Max,
-  Min,
 } from 'class-validator';
 
 import {
   ADDRESS_EXAMPLE,
   CHURCH_NAME_EXAMPLE,
-  CURRENCY_EXAMPLE,
   EMAIL_EXAMPLE,
   PHONE_NUMBER_EXAMPLE,
   TENANT_SLUG_EXAMPLE,
-  TIMEZONE_EXAMPLE,
   URL_EXAMPLE,
 } from '@shared/dto-examples';
 
@@ -60,23 +55,6 @@ export class CreateTenantRequestDto {
   @IsOptional()
   @IsUrl()
   logoUrl?: string;
-
-  @ApiPropertyOptional({ example: CURRENCY_EXAMPLE, description: 'ISO 4217' })
-  @IsOptional()
-  @IsString()
-  currency?: string;
-
-  @ApiPropertyOptional({ example: TIMEZONE_EXAMPLE, description: 'IANA timezone' })
-  @IsOptional()
-  @IsString()
-  timezone?: string;
-
-  @ApiPropertyOptional({ example: 1, description: 'Month (1-12) the fiscal year starts' })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(12)
-  fiscalYearStart?: number;
 
   @ApiPropertyOptional({ type: [String], example: ['building_fund', 'youth_ministry'] })
   @IsOptional()

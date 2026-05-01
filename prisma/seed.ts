@@ -64,8 +64,6 @@ async function main(): Promise<void> {
     create: {
       slug: 'grace-community',
       name: 'Grace Community Church',
-      currency: 'USD',
-      timezone: 'America/New_York',
       createdBy: superAdmin.firebaseUid,
     },
   });
@@ -126,7 +124,6 @@ async function main(): Promise<void> {
         tenantId: tenant.id,
         title: 'New Sanctuary Building Fund',
         description: 'Raising funds for the new sanctuary construction.',
-        currency: tenant.currency,
         status: 'ACTIVE',
         createdBy: adminUser.firebaseUid,
         deadline: new Date('2027-12-31'),
@@ -186,9 +183,7 @@ async function main(): Promise<void> {
           memberId: maryMember.id,
           type: 'TITHE',
           amount: 150,
-          currency: tenant.currency,
           date: new Date('2026-04-07'),
-          paymentMethod: 'CASH',
           createdBy: adminUser.firebaseUid,
         },
         {
@@ -197,9 +192,7 @@ async function main(): Promise<void> {
           memberId: maryMember.id,
           type: 'OFFERING',
           amount: 40,
-          currency: tenant.currency,
           date: new Date('2026-04-14'),
-          paymentMethod: 'CASH',
           createdBy: adminUser.firebaseUid,
         },
         {
@@ -211,9 +204,7 @@ async function main(): Promise<void> {
           campaignItemId: pledge.campaignItemId,
           type: 'COMMITMENT',
           amount: 2500,
-          currency: tenant.currency,
           date: new Date('2026-04-21'),
-          paymentMethod: 'BANK_TRANSFER',
           referenceNumber: 'TRF-2026-0421',
           createdBy: adminUser.firebaseUid,
         },

@@ -6,7 +6,6 @@ import { CampaignStatus } from '@prisma/client';
 import {
   CAMPAIGN_DESCRIPTION_EXAMPLE,
   CAMPAIGN_TITLE_EXAMPLE,
-  CURRENCY_EXAMPLE,
   DATE_UTC_EXAMPLE,
   FIREBASE_UID_EXAMPLE,
   ID_EXAMPLE,
@@ -28,10 +27,6 @@ export class CampaignDto {
   @Expose()
   @ApiPropertyOptional({ example: CAMPAIGN_DESCRIPTION_EXAMPLE, nullable: true })
   description!: string | null;
-
-  @Expose()
-  @ApiProperty({ example: CURRENCY_EXAMPLE })
-  currency!: string;
 
   @Expose()
   @ApiPropertyOptional({

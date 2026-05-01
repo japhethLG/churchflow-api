@@ -1,13 +1,11 @@
-import type { PaymentMethod, TransactionType } from '@prisma/client';
+import type { TransactionType } from '@prisma/client';
 
 export interface CreateTransactionInput {
   tenantId: string;
   createdBy: string;
   type: TransactionType;
   amount: number;
-  currency: string;
   date: Date;
-  paymentMethod: PaymentMethod;
   memberId?: string | null;
   campaignId?: string | null;
   campaignItemId?: string | null;
@@ -21,7 +19,6 @@ export interface UpdateTransactionInput {
   type?: TransactionType;
   amount?: number;
   date?: Date;
-  paymentMethod?: PaymentMethod;
   memberId?: string | null;
   campaignId?: string | null;
   campaignItemId?: string | null;

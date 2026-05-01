@@ -5,7 +5,6 @@ export interface CreateCampaignInput {
   createdBy: string;
   title: string;
   description?: string | null;
-  currency: string;
   deadline?: Date | null;
   status?: CampaignStatus;
 }

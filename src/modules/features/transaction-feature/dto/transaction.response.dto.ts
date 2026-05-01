@@ -3,7 +3,8 @@ import { Expose, Type } from 'class-transformer';
 
 import { TransactionType } from '@prisma/client';
 
-import { AMOUNT_EXAMPLE, CURRENCY_EXAMPLE } from '@shared/dto-examples';
+import { AMOUNT_EXAMPLE } from '@shared/dto-examples';
+
 import { MetaDto } from '@shared/dto/meta.dto';
 import { TransactionDto } from '@shared/dto/transaction.dto';
 
@@ -57,10 +58,6 @@ export class TransactionSummaryByMonthDto {
 }
 
 export class TransactionSummaryResponseDto {
-  @Expose()
-  @ApiProperty({ example: CURRENCY_EXAMPLE })
-  currency!: string;
-
   @Expose()
   @ApiProperty({ example: AMOUNT_EXAMPLE, description: 'Total across the entire window' })
   total!: number;

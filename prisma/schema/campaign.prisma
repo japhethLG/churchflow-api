@@ -12,7 +12,6 @@ model Campaign {
   tenantId    String
   title       String
   description String?
-  currency    String
   // Null = open-ended campaign (e.g. ongoing building fund).
   deadline    DateTime?
   status      CampaignStatus @default(ACTIVE)

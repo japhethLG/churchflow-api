@@ -1,11 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Expose, Transform } from 'class-transformer';
 
-import { PaymentMethod, Prisma, TransactionType } from '@prisma/client';
+import { Prisma, TransactionType } from '@prisma/client';
+
 
 import {
   AMOUNT_EXAMPLE,
-  CURRENCY_EXAMPLE,
   DATE_UTC_EXAMPLE,
   FIREBASE_UID_EXAMPLE,
   ID_EXAMPLE,
@@ -72,20 +72,12 @@ export class TransactionDto {
   amount!: number;
 
   @Expose()
-  @ApiProperty({ example: CURRENCY_EXAMPLE })
-  currency!: string;
-
-  @Expose()
   @ApiProperty({ example: DATE_UTC_EXAMPLE })
   date!: Date;
 
   @Expose()
   @ApiPropertyOptional({ example: STRING_EXAMPLE, nullable: true })
   note!: string | null;
-
-  @Expose()
-  @ApiProperty({ enum: PaymentMethod, example: PaymentMethod.CASH })
-  paymentMethod!: PaymentMethod;
 
   @Expose()
   @ApiPropertyOptional({ example: REFERENCE_NUMBER_EXAMPLE, nullable: true })

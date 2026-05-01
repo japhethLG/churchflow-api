@@ -17,7 +17,6 @@ import {
   CAMPAIGN_DESCRIPTION_EXAMPLE,
   CAMPAIGN_ITEM_TITLE_EXAMPLE,
   CAMPAIGN_TITLE_EXAMPLE,
-  CURRENCY_EXAMPLE,
   DATE_UTC_EXAMPLE,
   INT_EXAMPLE,
 } from '@shared/dto-examples';
@@ -31,14 +30,6 @@ export class CreateCampaignRequestDto {
   @IsOptional()
   @IsString()
   description?: string;
-
-  @ApiPropertyOptional({
-    example: CURRENCY_EXAMPLE,
-    description: 'ISO 4217. Defaults to the tenant currency when omitted.',
-  })
-  @IsOptional()
-  @IsString()
-  currency?: string;
 
   @ApiPropertyOptional({
     example: DATE_UTC_EXAMPLE,
