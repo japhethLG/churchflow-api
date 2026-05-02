@@ -17,7 +17,8 @@
 		"prisma:deploy": "prisma migrate deploy",
 		"prisma:studio": "prisma studio",
 		"prisma:seed": "tsx prisma/seed.ts",
-		"seed:super-admin": "tsx scripts/seed-super-admin.ts"
+		"seed:super-admin": "tsx scripts/seed-super-admin.ts",
+		"prepare": "husky"
 	},
 	"dependencies": {
 		"@nestjs/cache-manager": "^3.0.0",
@@ -52,6 +53,7 @@
 		"@types/express": "^5.0.0",
 		"@types/node": "^22.0.0",
 		"@types/nodemailer": "^8.0.0",
+		"husky": "^9.1.7",
 		"prisma": "^7.5.0",
 		"ts-loader": "^9.5.1",
 		"ts-node": "^10.9.2",
