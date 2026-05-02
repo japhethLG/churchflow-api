@@ -86,16 +86,18 @@ export class MemberController {
 		};
 	}
 
-	@Get('me')
-  @ApiOperation({
-    summary: 'Get the current user’s member row in this tenant',
-    description:
-      'Any member (USER or ADMIN) can call this for themselves. Super-admins with no Member row in the tenant get 404.',
-  })
-  @ApiOkResponse({ type: MemberResponseDto })
-  async me(@CurrentTenant() tenant: TenantContext): Promise<MemberResponseDto> {
-    return this.memberFeatureService.getMe(tenant) as unknown as Promise<MemberResponseDto>;
-  }
+	@Get("me")
+	@ApiOperation({
+		summary: "Get the current user’s member row in this tenant",
+		description:
+			"Any member (USER or ADMIN) can call this for themselves. Super-admins with no Member row in the tenant get 404.",
+	})
+	@ApiOkResponse({ type: MemberResponseDto })
+	async me(@CurrentTenant() tenant: TenantContext): Promise<MemberResponseDto> {
+		return this.memberFeatureService.getMe(
+			tenant,
+		) as unknown as Promise<MemberResponseDto>;
+	}
 
 	@Patch("me")
 	@ApiOperation({
@@ -122,7 +124,7 @@ export class MemberController {
 	@ApiOkResponse({ type: MemberResponseDto })
 	async getById(
 		@CurrentTenant() tenant: TenantContext,
-		@Param('id') id: string,
+		@Param("id") id: string,
 	): Promise<MemberResponseDto> {
 		return this.memberFeatureService.getById(
 			tenant,
@@ -137,7 +139,7 @@ export class MemberController {
 	async update(
 		@CurrentUser() user: AuthUser,
 		@CurrentTenant() tenant: TenantContext,
-		@Param('id') id: string,
+		@Param("id") id: string,
 		@Body() body: UpdateMemberRequestDto,
 	): Promise<MemberResponseDto> {
 		return this.memberFeatureService.update(
@@ -155,7 +157,7 @@ export class MemberController {
 	async delete(
 		@CurrentUser() user: AuthUser,
 		@CurrentTenant() tenant: TenantContext,
-		@Param('id') id: string,
+		@Param("id") id: string,
 	): Promise<DeleteResponseDto> {
 		const deleted = await this.memberFeatureService.delete(user, tenant, id);
 		return { id: deleted.id };
@@ -176,8 +178,8 @@ export class MemberController {
 	@ApiOkResponse({ type: MergeMembersPreviewResponseDto })
 	async mergePreview(
 		@CurrentTenant() tenant: TenantContext,
-		@Param('id') keepId: string,
-		@Query('dropId') dropId: string,
+		@Param("id") keepId: string,
+		@Query("dropId") dropId: string,
 	): Promise<MergeMembersPreviewResponseDto> {
 		return this.memberFeatureService.previewMerge(
 			tenant,
@@ -201,7 +203,7 @@ export class MemberController {
 	async merge(
 		@CurrentUser() user: AuthUser,
 		@CurrentTenant() tenant: TenantContext,
-		@Param('id') keepId: string,
+		@Param("id") keepId: string,
 		@Body() body: MergeMembersRequestDto,
 	): Promise<MergeMembersResponseDto> {
 		return this.memberFeatureService.merge(

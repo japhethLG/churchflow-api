@@ -93,7 +93,7 @@ export class CampaignController {
 	@ApiOkResponse({ type: CampaignWithItemsResponseDto })
 	async getById(
 		@CurrentTenant() tenant: TenantContext,
-		@Param('id') id: string,
+		@Param("id") id: string,
 	): Promise<CampaignWithItemsResponseDto> {
 		return this.campaignFeatureService.getById(
 			tenant,
@@ -109,7 +109,7 @@ export class CampaignController {
 	@ApiOkResponse({ type: CampaignProgressResponseDto })
 	async progress(
 		@CurrentTenant() tenant: TenantContext,
-		@Param('id') id: string,
+		@Param("id") id: string,
 	): Promise<CampaignProgressResponseDto> {
 		return this.campaignFeatureService.progress(tenant, id);
 	}
@@ -121,7 +121,7 @@ export class CampaignController {
 	async update(
 		@CurrentUser() user: AuthUser,
 		@CurrentTenant() tenant: TenantContext,
-		@Param('id') id: string,
+		@Param("id") id: string,
 		@Body() body: UpdateCampaignRequestDto,
 	): Promise<CampaignResponseDto> {
 		return this.campaignFeatureService.update(
@@ -139,7 +139,7 @@ export class CampaignController {
 	async delete(
 		@CurrentUser() user: AuthUser,
 		@CurrentTenant() tenant: TenantContext,
-		@Param('id') id: string,
+		@Param("id") id: string,
 	): Promise<DeleteResponseDto> {
 		const deleted = await this.campaignFeatureService.delete(user, tenant, id);
 		return { id: deleted.id };
@@ -152,7 +152,7 @@ export class CampaignController {
 	async restore(
 		@CurrentUser() user: AuthUser,
 		@CurrentTenant() tenant: TenantContext,
-		@Param('id') id: string,
+		@Param("id") id: string,
 	): Promise<CampaignResponseDto> {
 		return this.campaignFeatureService.restore(
 			user,
@@ -167,7 +167,7 @@ export class CampaignController {
 	@ApiCreatedResponse({ type: CampaignItemResponseDto })
 	async addItem(
 		@CurrentTenant() tenant: TenantContext,
-		@Param('id') campaignId: string,
+		@Param("id") campaignId: string,
 		@Body() body: CreateCampaignItemRequestDto,
 	): Promise<CampaignItemResponseDto> {
 		return this.campaignFeatureService.addItem(
@@ -183,8 +183,8 @@ export class CampaignController {
 	@ApiOkResponse({ type: CampaignItemResponseDto })
 	async updateItem(
 		@CurrentTenant() tenant: TenantContext,
-		@Param('id') campaignId: string,
-		@Param('itemId') itemId: string,
+		@Param("id") campaignId: string,
+		@Param("itemId") itemId: string,
 		@Body() body: UpdateCampaignItemRequestDto,
 	): Promise<CampaignItemResponseDto> {
 		return this.campaignFeatureService.updateItem(
@@ -201,8 +201,8 @@ export class CampaignController {
 	@ApiOkResponse({ type: DeleteResponseDto })
 	async deleteItem(
 		@CurrentTenant() tenant: TenantContext,
-		@Param('id') campaignId: string,
-		@Param('itemId') itemId: string,
+		@Param("id") campaignId: string,
+		@Param("itemId") itemId: string,
 	): Promise<DeleteResponseDto> {
 		const deleted = await this.campaignFeatureService.deleteItem(
 			tenant,

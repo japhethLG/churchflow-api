@@ -8,7 +8,6 @@ import {
 	BadRequestException,
 	ConflictException,
 	Injectable,
-	Logger,
 } from "@nestjs/common";
 import { AuditAction, type Member } from "@prisma/client";
 
@@ -36,8 +35,6 @@ export interface MergeResult extends MergePreview {
 
 @Injectable()
 export class MemberMergingService {
-	private readonly logger = new Logger(MemberMergingService.name);
-
 	constructor(
 		private readonly memberService: MemberService,
 		private readonly transactionService: TransactionService,

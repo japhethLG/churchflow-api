@@ -71,27 +71,33 @@ export class TenantController {
 	// Slug suggestion helper for the create-tenant UI. Not gated — the UI
 	// calls this while the super-admin is typing. It just slugifies the
 	// name.
-	@Roles('SUPER_ADMIN')
-  @Get('slug-suggestion')
-  @ApiOperation({ summary: 'Suggest a slug from a tenant name' })
-  @ApiQuery({ name: 'name' })
-  @ApiOkResponse({ schema: { type: 'object', properties: { slug: { type: 'string' } } } })
-  async suggestSlug(@Query('name') name: string): Promise<{ slug: string }> {
-    return { slug: this.tenantFeatureService.suggestSlug(name ?? '') };
-  }
+	@Roles("SUPER_ADMIN")
+	@Get("slug-suggestion")
+	@ApiOperation({ summary: "Suggest a slug from a tenant name" })
+	@ApiQuery({ name: "name" })
+	@ApiOkResponse({
+		schema: { type: "object", properties: { slug: { type: "string" } } },
+	})
+	async suggestSlug(@Query("name") name: string): Promise<{ slug: string }> {
+		return { slug: this.tenantFeatureService.suggestSlug(name ?? "") };
+	}
 
 	@UseGuards(TenantGuard)
-  @Get(':tenantId')
-  @ApiOperation({
-    summary: 'Get a church by id or slug',
-    description:
-      'Caller must be a member of the tenant, or a super-admin. Accepts UUID or slug in :tenantId.',
-  })
-  @ApiParam({ name: 'tenantId', description: 'Tenant UUID or slug' })
-  @ApiOkResponse({ type: TenantResponseDto })
-  async getById(@Param('tenantId') idOrSlug: string): Promise<TenantResponseDto> {
-    return this.tenantFeatureService.getByIdOrSlug(idOrSlug) as unknown as Promise<TenantResponseDto>;
-  }
+	@Get(":tenantId")
+	@ApiOperation({
+		summary: "Get a church by id or slug",
+		description:
+			"Caller must be a member of the tenant, or a super-admin. Accepts UUID or slug in :tenantId.",
+	})
+	@ApiParam({ name: "tenantId", description: "Tenant UUID or slug" })
+	@ApiOkResponse({ type: TenantResponseDto })
+	async getById(
+		@Param("tenantId") idOrSlug: string,
+	): Promise<TenantResponseDto> {
+		return this.tenantFeatureService.getByIdOrSlug(
+			idOrSlug,
+		) as unknown as Promise<TenantResponseDto>;
+	}
 
 	@UseGuards(TenantGuard)
 	@Patch(":tenantId")
@@ -100,7 +106,7 @@ export class TenantController {
 	@ApiOkResponse({ type: TenantResponseDto })
 	async update(
 		@CurrentUser() user: AuthUser,
-		@Param('tenantId') idOrSlug: string,
+		@Param("tenantId") idOrSlug: string,
 		@Body() body: UpdateTenantRequestDto,
 	): Promise<TenantResponseDto> {
 		const tenant = await this.tenantFeatureService.getByIdOrSlug(idOrSlug);
@@ -118,7 +124,7 @@ export class TenantController {
 	@ApiOkResponse({ type: TenantResponseDto })
 	async rename(
 		@CurrentUser() user: AuthUser,
-		@Param('tenantId') idOrSlug: string,
+		@Param("tenantId") idOrSlug: string,
 		@Body() body: RenameTenantRequestDto,
 	): Promise<TenantResponseDto> {
 		const tenant = await this.tenantFeatureService.getByIdOrSlug(idOrSlug);
@@ -136,7 +142,7 @@ export class TenantController {
 	@ApiOkResponse({ type: DeleteResponseDto })
 	async delete(
 		@CurrentUser() user: AuthUser,
-		@Param('tenantId') idOrSlug: string,
+		@Param("tenantId") idOrSlug: string,
 	): Promise<DeleteResponseDto> {
 		const tenant = await this.tenantFeatureService.getByIdOrSlug(idOrSlug);
 		const deleted = await this.tenantFeatureService.delete(user, tenant.id);
@@ -153,7 +159,7 @@ export class TenantController {
 	@ApiOkResponse({ type: TenantResponseDto })
 	async restore(
 		@CurrentUser() user: AuthUser,
-		@Param('tenantId') id: string,
+		@Param("tenantId") id: string,
 	): Promise<TenantResponseDto> {
 		return this.tenantFeatureService.restore(
 			user,

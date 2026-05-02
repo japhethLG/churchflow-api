@@ -70,7 +70,7 @@ async function main(): Promise<void> {
 	});
 
 	// Members
-	const adminMember = await prisma.member.upsert({
+	const _adminMember = await prisma.member.upsert({
 		where: { tenantId_userId: { tenantId: tenant.id, userId: adminUser.id } },
 		update: {},
 		create: {

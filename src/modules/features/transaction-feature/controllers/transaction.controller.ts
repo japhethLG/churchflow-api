@@ -99,7 +99,7 @@ export class TransactionController {
 	@ApiOkResponse({ type: TransactionSummaryResponseDto })
 	async summary(
 		@CurrentTenant() tenant: TenantContext,
-		@Query('months') months?: string,
+		@Query("months") months?: string,
 	): Promise<TransactionSummaryResponseDto> {
 		return this.transactionFeatureService.summary(
 			tenant,
@@ -112,7 +112,7 @@ export class TransactionController {
 	@ApiOkResponse({ type: TransactionResponseDto })
 	async getById(
 		@CurrentTenant() tenant: TenantContext,
-		@Param('id') id: string,
+		@Param("id") id: string,
 	): Promise<TransactionResponseDto> {
 		return this.transactionFeatureService.getById(
 			tenant,
@@ -127,7 +127,7 @@ export class TransactionController {
 	async update(
 		@CurrentUser() user: AuthUser,
 		@CurrentTenant() tenant: TenantContext,
-		@Param('id') id: string,
+		@Param("id") id: string,
 		@Body() body: UpdateTransactionRequestDto,
 	): Promise<TransactionResponseDto> {
 		return this.transactionFeatureService.update(
@@ -145,7 +145,7 @@ export class TransactionController {
 	async delete(
 		@CurrentUser() user: AuthUser,
 		@CurrentTenant() tenant: TenantContext,
-		@Param('id') id: string,
+		@Param("id") id: string,
 	): Promise<DeleteResponseDto> {
 		const deleted = await this.transactionFeatureService.delete(
 			user,

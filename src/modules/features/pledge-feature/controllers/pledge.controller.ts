@@ -94,7 +94,7 @@ export class PledgeController {
 	@ApiOkResponse({ type: PledgeResponseDto })
 	async getById(
 		@CurrentTenant() tenant: TenantContext,
-		@Param('id') id: string,
+		@Param("id") id: string,
 	): Promise<PledgeResponseDto> {
 		return this.pledgeFeatureService.getById(
 			tenant,
@@ -108,7 +108,7 @@ export class PledgeController {
 	async update(
 		@CurrentUser() user: AuthUser,
 		@CurrentTenant() tenant: TenantContext,
-		@Param('id') id: string,
+		@Param("id") id: string,
 		@Body() body: UpdatePledgeRequestDto,
 	): Promise<PledgeResponseDto> {
 		return this.pledgeFeatureService.update(
@@ -126,7 +126,7 @@ export class PledgeController {
 	async delete(
 		@CurrentUser() user: AuthUser,
 		@CurrentTenant() tenant: TenantContext,
-		@Param('id') id: string,
+		@Param("id") id: string,
 	): Promise<DeleteResponseDto> {
 		const deleted = await this.pledgeFeatureService.delete(user, tenant, id);
 		return { id: deleted.id };

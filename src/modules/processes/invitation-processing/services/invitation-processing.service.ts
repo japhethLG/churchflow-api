@@ -46,15 +46,15 @@ export class InvitationProcessingService {
 	private readonly logger = new Logger(InvitationProcessingService.name);
 
 	constructor(
-    private readonly invitationService: InvitationService,
-    private readonly memberService: MemberService,
-    private readonly userService: UserService,
-    private readonly tenantService: TenantService,
-    private readonly userClaims: UserClaimsService,
-    private readonly auditService: AuditService,
-    private readonly config: ConfigService,
-    @Inject(EMAIL_PROVIDER) private readonly email: IEmailProvider,
-  ) {}
+		private readonly invitationService: InvitationService,
+		private readonly memberService: MemberService,
+		private readonly userService: UserService,
+		private readonly tenantService: TenantService,
+		private readonly userClaims: UserClaimsService,
+		private readonly auditService: AuditService,
+		private readonly config: ConfigService,
+		@Inject(EMAIL_PROVIDER) readonly _email: IEmailProvider,
+	) {}
 
 	async issue(input: IssueInvitationInput): Promise<Invitation> {
 		const tenant = await this.tenantService.getById(input.tenantId);
@@ -246,9 +246,7 @@ export class InvitationProcessingService {
 	// church name before signing in. Returns the invitation without
 	// side effects; does not expose the raw token details beyond what's
 	// needed to render the page.
-	async lookup(
-		token: string,
-	): Promise<
+	async lookup(token: string): Promise<
 		Invitation & {
 			tenantName: string;
 			tenantSlug: string;
@@ -295,7 +293,7 @@ export class InvitationProcessingService {
 		const text = `You've been invited to ${tenantName} on ChurchFlow. Accept: ${link} (expires ${dayjs(invitation.expiresAt).format("YYYY-MM-DD")})`;
 
 		try {
-			await this.email.send({ to: invitation.email, subject, html, text });
+			await this._email.send({ to: invitation.email, subject, html, text });
 		} catch (err) {
 			// Email failures are non-fatal — the admin can reshare the link
 			// directly. Log so operators know something is wrong with the

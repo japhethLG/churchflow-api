@@ -35,12 +35,17 @@ export class AdminController {
 		return this.adminFeatureService.getPlatformStats();
 	}
 
-	@Get('users')
-  @ApiOperation({ summary: 'List all users with admin roles across all tenants (super admin only)' })
-  @ApiOkResponse({ type: AdminUserListResponseDto })
-  async listUsers(@Query() query: AdminUsersQueryDto): Promise<AdminUserListResponseDto> {
-    return this.adminFeatureService.listUsers(query);
-  }
+	@Get("users")
+	@ApiOperation({
+		summary:
+			"List all users with admin roles across all tenants (super admin only)",
+	})
+	@ApiOkResponse({ type: AdminUserListResponseDto })
+	async listUsers(
+		@Query() query: AdminUsersQueryDto,
+	): Promise<AdminUserListResponseDto> {
+		return this.adminFeatureService.listUsers(query);
+	}
 
 	@Patch("users/:id")
 	@ApiOperation({
@@ -50,7 +55,7 @@ export class AdminController {
 	@ApiOkResponse({ type: AdminUserDto })
 	async toggleSuperAdmin(
 		@CurrentUser() user: AuthUser,
-		@Param('id') id: string,
+		@Param("id") id: string,
 		@Body() body: ToggleSuperAdminRequestDto,
 	): Promise<AdminUserDto> {
 		return this.adminFeatureService.toggleSuperAdmin(user, id, body);

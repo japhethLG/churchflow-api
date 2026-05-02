@@ -24,7 +24,7 @@ import { PrismaClient } from "@prisma/client";
 import { config as loadEnv } from "dotenv";
 import { expand } from "dotenv-expand";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
+import { getAuth, type UserRecord } from "firebase-admin/auth";
 
 // Load .env the same way main.ts does, so DATABASE_URL + Firebase creds
 // are picked up when this runs outside the Nest runtime.
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
 		adapter: new PrismaPg({ connectionString: requireEnv("DATABASE_URL") }),
 	});
 
-	let fbUser;
+	let fbUser: UserRecord;
 	try {
 		fbUser = await auth.getUserByEmail(email);
 	} catch {

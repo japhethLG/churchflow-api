@@ -68,31 +68,37 @@ export class InvitationController {
 		}) as unknown as Promise<InvitationResponseDto>;
 	}
 
-	@ApiBearerAuth('Bearer')
-  @UseGuards(TenantGuard)
-  @Get('tenants/:tenantId/invitations')
-  @TenantRoles('ADMIN')
-  @ApiOperation({ summary: 'List pending invitations for a tenant (admin only)' })
-  @ApiParam({ name: 'tenantId', description: 'Tenant UUID or slug' })
-  @ApiOkResponse({ type: InvitationListResponseDto })
-  async list(
-    @CurrentTenant() tenant: TenantContext,
-  ): Promise<InvitationListResponseDto> {
-    const items = await this.invitationProcessing.listPending(tenant.tenantId);
-    return { items: items as unknown as InvitationResponseDto[] };
-  }
+	@ApiBearerAuth("Bearer")
+	@UseGuards(TenantGuard)
+	@Get("tenants/:tenantId/invitations")
+	@TenantRoles("ADMIN")
+	@ApiOperation({
+		summary: "List pending invitations for a tenant (admin only)",
+	})
+	@ApiParam({ name: "tenantId", description: "Tenant UUID or slug" })
+	@ApiOkResponse({ type: InvitationListResponseDto })
+	async list(
+		@CurrentTenant() tenant: TenantContext,
+	): Promise<InvitationListResponseDto> {
+		const items = await this.invitationProcessing.listPending(tenant.tenantId);
+		return { items: items as unknown as InvitationResponseDto[] };
+	}
 
 	// Public token lookup. Members will hit this from the invitation link
 	// before they're signed in, to display "You've been invited to Grace
 	// Community" without forcing sign-in first.
 	@Public()
-  @Get('invitations/lookup')
-  @ApiOperation({ summary: 'Look up an invitation by token (public)' })
-  @ApiQuery({ name: 'token' })
-  @ApiOkResponse({ type: LookupInvitationResponseDto })
-  async lookup(@Query('token') token: string): Promise<LookupInvitationResponseDto> {
-    return this.invitationProcessing.lookup(token) as unknown as Promise<LookupInvitationResponseDto>;
-  }
+	@Get("invitations/lookup")
+	@ApiOperation({ summary: "Look up an invitation by token (public)" })
+	@ApiQuery({ name: "token" })
+	@ApiOkResponse({ type: LookupInvitationResponseDto })
+	async lookup(
+		@Query("token") token: string,
+	): Promise<LookupInvitationResponseDto> {
+		return this.invitationProcessing.lookup(
+			token,
+		) as unknown as Promise<LookupInvitationResponseDto>;
+	}
 
 	@ApiBearerAuth("Bearer")
 	@Post("invitations/accept")
@@ -121,7 +127,7 @@ export class InvitationController {
 	async cancel(
 		@CurrentUser() user: AuthUser,
 		@CurrentTenant() tenant: TenantContext,
-		@Param('invitationId') invitationId: string,
+		@Param("invitationId") invitationId: string,
 	): Promise<InvitationResponseDto> {
 		// Look up the invitation by ID and cancel it.
 		// The processing service's cancel() expects a token, but we want to
