@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
-import type { OnModuleInit } from "@nestjs/common";
-import { Injectable, Logger } from "@nestjs/common";
-import type { ConfigService } from "@nestjs/config";
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import * as admin from "firebase-admin";
 
 @Injectable()

@@ -1,4 +1,4 @@
-import type { MemberRole, MemberStatus } from "@prisma/client";
+import { MemberRole, MemberStatus } from "@prisma/client";
 
 export interface CreateMemberInput {
 	tenantId: string;

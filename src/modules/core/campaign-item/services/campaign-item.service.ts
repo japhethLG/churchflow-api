@@ -1,13 +1,13 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 
-import type { CampaignItem } from "@prisma/client";
+import { CampaignItem } from "@prisma/client";
 
-import type {
+import {
 	CampaignItemFilters,
 	CreateCampaignItemInput,
 	UpdateCampaignItemInput,
 } from "../campaign-item.types";
-import type { CampaignItemRepository } from "../repository/campaign-item.repository";
+import { CampaignItemRepository } from "../repository/campaign-item.repository";
 
 @Injectable()
 export class CampaignItemService {

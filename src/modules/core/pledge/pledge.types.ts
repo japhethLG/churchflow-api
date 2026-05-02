@@ -1,4 +1,4 @@
-import type { PledgeStatus } from "@prisma/client";
+import { PledgeStatus } from "@prisma/client";
 
 export interface CreatePledgeInput {
 	tenantId: string;

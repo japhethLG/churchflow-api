@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 
-import type { IEmailProvider, SendEmailInput } from "./email.interface";
+import {  IEmailProvider, SendEmailInput  } from "./email.interface";
 
 // Fallback provider when no real email is configured. Logs the email to
 // the console instead of sending — useful in local dev without Resend

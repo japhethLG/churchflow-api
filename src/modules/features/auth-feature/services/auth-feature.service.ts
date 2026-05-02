@@ -1,9 +1,9 @@
-import type { FirebaseAdminService } from "@infrastructure/firebase-auth/firebase-admin.service";
-import type { UserClaimsService } from "@infrastructure/firebase-auth/user-claims.service";
-import type { TenantService } from "@modules/core/tenant/services/tenant.service";
-import type { UserService } from "@modules/core/user/services/user.service";
+import { FirebaseAdminService } from "@infrastructure/firebase-auth/firebase-admin.service";
+import { UserClaimsService } from "@infrastructure/firebase-auth/user-claims.service";
+import { TenantService } from "@modules/core/tenant/services/tenant.service";
+import { UserService } from "@modules/core/user/services/user.service";
 import { Injectable } from "@nestjs/common";
-import type { MemberRole, User } from "@prisma/client";
+import { MemberRole, User } from "@prisma/client";
 
 export interface TenantMembershipView {
 	tenantId: string;

@@ -3,12 +3,12 @@ import {
 	EMAIL_PROVIDER,
 	type IEmailProvider,
 } from "@infrastructure/email/email.interface";
-import type { UserClaimsService } from "@infrastructure/firebase-auth/user-claims.service";
-import type { AuditService } from "@modules/core/audit/services/audit.service";
-import type { InvitationService } from "@modules/core/invitation/services/invitation.service";
-import type { MemberService } from "@modules/core/member/services/member.service";
-import type { TenantService } from "@modules/core/tenant/services/tenant.service";
-import type { UserService } from "@modules/core/user/services/user.service";
+import {  UserClaimsService  } from "@infrastructure/firebase-auth/user-claims.service";
+import {  AuditService  } from "@modules/core/audit/services/audit.service";
+import {  InvitationService  } from "@modules/core/invitation/services/invitation.service";
+import {  MemberService  } from "@modules/core/member/services/member.service";
+import {  TenantService  } from "@modules/core/tenant/services/tenant.service";
+import {  UserService  } from "@modules/core/user/services/user.service";
 import {
 	BadRequestException,
 	ConflictException,
@@ -17,7 +17,7 @@ import {
 	Injectable,
 	Logger,
 } from "@nestjs/common";
-import type { ConfigService } from "@nestjs/config";
+import { ConfigService } from "@nestjs/config";
 import {
 	AuditAction,
 	type Invitation,

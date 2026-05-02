@@ -1,6 +1,6 @@
 import { CurrentUser } from "@infrastructure/firebase-auth/decorators/current-user.decorator";
 import { Public } from "@infrastructure/firebase-auth/decorators/public.decorator";
-import type { AuthUser } from "@infrastructure/firebase-auth/types/auth-user.type";
+import { AuthUser } from "@infrastructure/firebase-auth/types/auth-user.type";
 import { Body, Controller, Get, HttpCode, Post } from "@nestjs/common";
 import {
 	ApiBearerAuth,
@@ -15,7 +15,7 @@ import {
 	AuthMeResponseDto,
 	SessionResponseDto,
 } from "../dto/session-response.dto";
-import type { AuthFeatureService } from "../services/auth-feature.service";
+import { AuthFeatureService } from "../services/auth-feature.service";
 
 @ApiTags("auth")
 @Controller("auth")

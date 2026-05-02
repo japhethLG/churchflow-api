@@ -1,11 +1,15 @@
-import type { CanActivate, ExecutionContext } from "@nestjs/common";
-import { ForbiddenException, Injectable } from "@nestjs/common";
-import type { Reflector } from "@nestjs/core";
+import {
+	CanActivate,
+	ExecutionContext,
+	ForbiddenException,
+	Injectable,
+} from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
 
-import type { Request } from "express";
+import { Request } from "express";
 
 import { type PlatformRole, ROLES_KEY } from "../decorators/roles.decorator";
-import type { AuthUser } from "../types/auth-user.type";
+import { AuthUser } from "../types/auth-user.type";
 
 // Enforces @Roles('SUPER_ADMIN') at the platform level (routes with no
 // tenant scope — e.g. POST /tenants). Per-tenant role checks live in

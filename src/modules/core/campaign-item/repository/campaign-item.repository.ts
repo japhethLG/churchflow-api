@@ -1,9 +1,9 @@
-import type { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
+import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
 import { Injectable } from "@nestjs/common";
-import type { CampaignItem, Prisma } from "@prisma/client";
+import { CampaignItem, Prisma } from "@prisma/client";
 import dayjs from "@shared/dayjs";
 
-import type {
+import {
 	CampaignItemFilters,
 	CreateCampaignItemInput,
 	UpdateCampaignItemInput,

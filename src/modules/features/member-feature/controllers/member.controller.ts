@@ -2,7 +2,7 @@ import { CurrentTenant } from "@infrastructure/firebase-auth/decorators/current-
 import { CurrentUser } from "@infrastructure/firebase-auth/decorators/current-user.decorator";
 import { TenantRoles } from "@infrastructure/firebase-auth/decorators/roles.decorator";
 import { TenantGuard } from "@infrastructure/firebase-auth/guards/tenant.guard";
-import type {
+import {
 	AuthUser,
 	TenantContext,
 } from "@infrastructure/firebase-auth/types/auth-user.type";
@@ -28,7 +28,7 @@ import {
 
 import { DeleteResponseDto } from "@shared/dto/delete-response.dto";
 
-import type {
+import {
 	CreateMemberRequestDto,
 	MemberFiltersRequestDto,
 	MergeMembersRequestDto,
@@ -41,7 +41,7 @@ import {
 	MergeMembersPreviewResponseDto,
 	MergeMembersResponseDto,
 } from "../dto/member.response.dto";
-import type { MemberFeatureService } from "../services/member-feature.service";
+import { MemberFeatureService } from "../services/member-feature.service";
 
 @ApiTags("members")
 @ApiBearerAuth("Bearer")

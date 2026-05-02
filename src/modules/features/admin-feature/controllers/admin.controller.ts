@@ -1,6 +1,6 @@
 import { CurrentUser } from "@infrastructure/firebase-auth/decorators/current-user.decorator";
 import { Roles } from "@infrastructure/firebase-auth/decorators/roles.decorator";
-import type { AuthUser } from "@infrastructure/firebase-auth/types/auth-user.type";
+import { AuthUser } from "@infrastructure/firebase-auth/types/auth-user.type";
 import { Body, Controller, Get, Param, Patch, Query } from "@nestjs/common";
 import {
 	ApiBearerAuth,
@@ -10,7 +10,7 @@ import {
 	ApiTags,
 } from "@nestjs/swagger";
 
-import type {
+import {
 	AdminUsersQueryDto,
 	ToggleSuperAdminRequestDto,
 } from "../dto/admin.request.dto";
@@ -19,7 +19,7 @@ import {
 	AdminUserListResponseDto,
 	PlatformStatsDto,
 } from "../dto/admin.response.dto";
-import type { AdminFeatureService } from "../services/admin-feature.service";
+import { AdminFeatureService } from "../services/admin-feature.service";
 
 @ApiTags("admin")
 @ApiBearerAuth("Bearer")

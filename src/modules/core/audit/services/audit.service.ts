@@ -1,9 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 
-import type { AuditEvent } from "@prisma/client";
+import { AuditEvent } from "@prisma/client";
 
-import type { AuditEventFilters, WriteAuditEventInput } from "../audit.types";
-import type {
+import { AuditEventFilters, WriteAuditEventInput } from "../audit.types";
+import {
 	AuditEventListResult,
 	AuditRepository,
 } from "../repository/audit.repository";

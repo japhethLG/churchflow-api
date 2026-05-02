@@ -1,13 +1,13 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 
-import type { Pledge } from "@prisma/client";
+import { Pledge } from "@prisma/client";
 
-import type {
+import {
 	CreatePledgeInput,
 	PledgeFilters,
 	UpdatePledgeInput,
 } from "../pledge.types";
-import type {
+import {
 	PledgeListResult,
 	PledgeRepository,
 } from "../repository/pledge.repository";

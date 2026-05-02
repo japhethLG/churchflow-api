@@ -1,4 +1,4 @@
-import type { TransactionType } from "@prisma/client";
+import { TransactionType } from "@prisma/client";
 
 export interface CreateTransactionInput {
 	tenantId: string;

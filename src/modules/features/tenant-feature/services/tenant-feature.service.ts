@@ -1,17 +1,17 @@
-import type { AuthUser } from "@infrastructure/firebase-auth/types/auth-user.type";
-import type { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
-import type { AuditService } from "@modules/core/audit/services/audit.service";
+import { AuthUser } from "@infrastructure/firebase-auth/types/auth-user.type";
+import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
+import { AuditService } from "@modules/core/audit/services/audit.service";
 import { TenantService } from "@modules/core/tenant/services/tenant.service";
 import { Injectable } from "@nestjs/common";
 import { AuditAction, MemberRole, type Tenant } from "@prisma/client";
 import dayjs from "@shared/dayjs";
 
-import type {
+import {
 	CreateTenantRequestDto,
 	RenameTenantRequestDto,
 	UpdateTenantRequestDto,
 } from "../dto/tenant.request.dto";
-import type {
+import {
 	TenantAdminPreviewDto,
 	TenantListItemDto,
 } from "../dto/tenant.response.dto";

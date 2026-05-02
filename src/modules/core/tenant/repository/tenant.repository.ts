@@ -1,9 +1,9 @@
-import type { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
+import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
 import { Injectable } from "@nestjs/common";
-import type { Tenant } from "@prisma/client";
+import { Tenant } from "@prisma/client";
 import dayjs from "@shared/dayjs";
 
-import type { CreateTenantInput, UpdateTenantInput } from "../tenant.types";
+import { CreateTenantInput, UpdateTenantInput } from "../tenant.types";
 
 @Injectable()
 export class TenantRepository {

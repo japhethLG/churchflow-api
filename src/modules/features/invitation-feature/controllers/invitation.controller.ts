@@ -3,11 +3,11 @@ import { CurrentUser } from "@infrastructure/firebase-auth/decorators/current-us
 import { Public } from "@infrastructure/firebase-auth/decorators/public.decorator";
 import { TenantRoles } from "@infrastructure/firebase-auth/decorators/roles.decorator";
 import { TenantGuard } from "@infrastructure/firebase-auth/guards/tenant.guard";
-import type {
+import {
 	AuthUser,
 	TenantContext,
 } from "@infrastructure/firebase-auth/types/auth-user.type";
-import type { InvitationProcessingService } from "@modules/processes/invitation-processing/services/invitation-processing.service";
+import { InvitationProcessingService } from "@modules/processes/invitation-processing/services/invitation-processing.service";
 import {
 	Body,
 	Controller,
@@ -28,7 +28,7 @@ import {
 	ApiTags,
 } from "@nestjs/swagger";
 
-import type {
+import {
 	AcceptInvitationRequestDto,
 	IssueInvitationRequestDto,
 } from "../dto/invitation.request.dto";

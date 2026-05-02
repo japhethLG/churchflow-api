@@ -1,9 +1,9 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 
-import type { User } from "@prisma/client";
+import { User } from "@prisma/client";
 
-import type { UserRepository } from "../repository/user.repository";
-import type { CreateUserInput, UpdateUserInput } from "../user.types";
+import { UserRepository } from "../repository/user.repository";
+import { CreateUserInput, UpdateUserInput } from "../user.types";
 
 @Injectable()
 export class UserService {

@@ -1,9 +1,9 @@
-import type { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
+import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
 import { Injectable, Logger } from "@nestjs/common";
-import type { MemberRole } from "@prisma/client";
+import { MemberRole } from "@prisma/client";
 
-import type { FirebaseAdminService } from "./firebase-admin.service";
-import type { TenantMembershipClaim } from "./types/auth-user.type";
+import { FirebaseAdminService } from "./firebase-admin.service";
+import { TenantMembershipClaim } from "./types/auth-user.type";
 
 // Rebuilds a user's Firebase custom claims from the source-of-truth rows
 // in Postgres. Called by:

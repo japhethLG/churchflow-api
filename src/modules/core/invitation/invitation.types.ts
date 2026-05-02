@@ -1,4 +1,4 @@
-import type { MemberRole } from "@prisma/client";
+import { MemberRole } from "@prisma/client";
 
 export interface CreateInvitationInput {
 	tenantId: string;

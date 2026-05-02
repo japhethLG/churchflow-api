@@ -1,6 +1,6 @@
 import { createParamDecorator, type ExecutionContext } from "@nestjs/common";
-import type { Request } from "express";
-import type { TenantContext } from "../types/auth-user.type";
+import { Request } from "express";
+import { TenantContext } from "../types/auth-user.type";
 
 // Companion to @CurrentUser. Returns the tenant context attached by
 // TenantGuard. Handlers that read this MUST be on a controller that has

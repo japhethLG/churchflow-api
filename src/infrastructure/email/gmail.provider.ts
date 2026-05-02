@@ -1,8 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
-import type { ConfigService } from "@nestjs/config";
+import { ConfigService } from "@nestjs/config";
 import * as nodemailer from "nodemailer";
 
-import type { IEmailProvider, SendEmailInput } from "./email.interface";
+import {  IEmailProvider, SendEmailInput  } from "./email.interface";
 
 // Gmail SMTP provider. Uses nodemailer with a Gmail App Password for
 // authentication. Free tier allows ~500 emails/day which is plenty for

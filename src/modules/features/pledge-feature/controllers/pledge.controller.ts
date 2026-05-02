@@ -2,7 +2,7 @@ import { CurrentTenant } from "@infrastructure/firebase-auth/decorators/current-
 import { CurrentUser } from "@infrastructure/firebase-auth/decorators/current-user.decorator";
 import { TenantRoles } from "@infrastructure/firebase-auth/decorators/roles.decorator";
 import { TenantGuard } from "@infrastructure/firebase-auth/guards/tenant.guard";
-import type {
+import {
 	AuthUser,
 	TenantContext,
 } from "@infrastructure/firebase-auth/types/auth-user.type";
@@ -28,7 +28,7 @@ import {
 
 import { DeleteResponseDto } from "@shared/dto/delete-response.dto";
 
-import type {
+import {
 	CreatePledgeRequestDto,
 	PledgeFiltersRequestDto,
 	UpdatePledgeRequestDto,
@@ -37,7 +37,7 @@ import {
 	PledgeListResponseDto,
 	PledgeResponseDto,
 } from "../dto/pledge.response.dto";
-import type { PledgeFeatureService } from "../services/pledge-feature.service";
+import { PledgeFeatureService } from "../services/pledge-feature.service";
 
 @ApiTags("pledges")
 @ApiBearerAuth("Bearer")

@@ -1,8 +1,8 @@
-import type { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
+import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
 import { Injectable } from "@nestjs/common";
-import type { AuditEvent, Prisma } from "@prisma/client";
+import { AuditEvent, Prisma } from "@prisma/client";
 
-import type { AuditEventFilters, WriteAuditEventInput } from "../audit.types";
+import { AuditEventFilters, WriteAuditEventInput } from "../audit.types";
 
 export interface AuditEventListResult {
 	items: AuditEvent[];

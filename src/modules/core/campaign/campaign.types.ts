@@ -1,4 +1,4 @@
-import type { CampaignStatus } from "@prisma/client";
+import { CampaignStatus } from "@prisma/client";
 
 export interface CreateCampaignInput {
 	tenantId: string;

@@ -2,7 +2,7 @@ import { CurrentTenant } from "@infrastructure/firebase-auth/decorators/current-
 import { CurrentUser } from "@infrastructure/firebase-auth/decorators/current-user.decorator";
 import { TenantRoles } from "@infrastructure/firebase-auth/decorators/roles.decorator";
 import { TenantGuard } from "@infrastructure/firebase-auth/guards/tenant.guard";
-import type {
+import {
 	AuthUser,
 	TenantContext,
 } from "@infrastructure/firebase-auth/types/auth-user.type";
@@ -28,7 +28,7 @@ import {
 
 import { DeleteResponseDto } from "@shared/dto/delete-response.dto";
 
-import type {
+import {
 	CampaignFiltersRequestDto,
 	CreateCampaignItemRequestDto,
 	CreateCampaignRequestDto,
@@ -42,7 +42,7 @@ import {
 	CampaignResponseDto,
 	CampaignWithItemsResponseDto,
 } from "../dto/campaign.response.dto";
-import type { CampaignFeatureService } from "../services/campaign-feature.service";
+import { CampaignFeatureService } from "../services/campaign-feature.service";
 
 @ApiTags("campaigns")
 @ApiBearerAuth("Bearer")

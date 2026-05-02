@@ -1,18 +1,19 @@
-import type { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
-import type { CanActivate, ExecutionContext } from "@nestjs/common";
+import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
 import {
+	CanActivate,
+	ExecutionContext,
 	ForbiddenException,
 	Injectable,
 	NotFoundException,
 } from "@nestjs/common";
-import type { Reflector } from "@nestjs/core";
-import type { Request } from "express";
+import { Reflector } from "@nestjs/core";
+import { Request } from "express";
 
 import {
 	TENANT_ROLES_KEY,
 	type TenantRole,
 } from "../decorators/roles.decorator";
-import type { AuthUser, TenantContext } from "../types/auth-user.type";
+import { AuthUser, TenantContext } from "../types/auth-user.type";
 
 // Applied (via @UseGuards) on controllers that have :tenantId in the
 // route. Responsibilities:

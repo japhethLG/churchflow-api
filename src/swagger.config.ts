@@ -1,7 +1,7 @@
-import type { INestApplication } from "@nestjs/common";
+import { INestApplication } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { apiReference } from "@scalar/nestjs-api-reference";
-import type { Request, Response } from "express";
+import { Request, Response } from "express";
 
 const version = "0.1.0";
 

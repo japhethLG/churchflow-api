@@ -1,14 +1,14 @@
-import type {
+import {
 	AuthUser,
 	TenantContext,
 } from "@infrastructure/firebase-auth/types/auth-user.type";
-import type { AuditService } from "@modules/core/audit/services/audit.service";
-import type { CampaignService } from "@modules/core/campaign/services/campaign.service";
-import type { CampaignItemService } from "@modules/core/campaign-item/services/campaign-item.service";
-import type { MemberService } from "@modules/core/member/services/member.service";
-import type { PledgeFilters } from "@modules/core/pledge/pledge.types";
-import type { PledgeListResult } from "@modules/core/pledge/repository/pledge.repository";
-import type { PledgeService } from "@modules/core/pledge/services/pledge.service";
+import { AuditService } from "@modules/core/audit/services/audit.service";
+import { CampaignService } from "@modules/core/campaign/services/campaign.service";
+import { CampaignItemService } from "@modules/core/campaign-item/services/campaign-item.service";
+import { MemberService } from "@modules/core/member/services/member.service";
+import { PledgeFilters } from "@modules/core/pledge/pledge.types";
+import { PledgeListResult } from "@modules/core/pledge/repository/pledge.repository";
+import { PledgeService } from "@modules/core/pledge/services/pledge.service";
 import {
 	BadRequestException,
 	ForbiddenException,
@@ -16,7 +16,7 @@ import {
 } from "@nestjs/common";
 import { AuditAction, type Pledge } from "@prisma/client";
 
-import type {
+import {
 	CreatePledgeRequestDto,
 	UpdatePledgeRequestDto,
 } from "../dto/pledge.request.dto";

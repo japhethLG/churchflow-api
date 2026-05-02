@@ -5,10 +5,10 @@ import {
 	NotFoundException,
 } from "@nestjs/common";
 
-import type { Tenant } from "@prisma/client";
+import { Tenant } from "@prisma/client";
 
-import type { TenantRepository } from "../repository/tenant.repository";
-import type { CreateTenantInput, UpdateTenantInput } from "../tenant.types";
+import { TenantRepository } from "../repository/tenant.repository";
+import { CreateTenantInput, UpdateTenantInput } from "../tenant.types";
 
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/;
 const RESERVED_SLUGS = new Set([

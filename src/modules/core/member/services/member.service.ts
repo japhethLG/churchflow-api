@@ -1,13 +1,13 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 
-import type { Member } from "@prisma/client";
+import { Member } from "@prisma/client";
 
-import type {
+import {
 	CreateMemberInput,
 	MemberFilters,
 	UpdateMemberInput,
 } from "../member.types";
-import type {
+import {
 	MemberListResult,
 	MemberRepository,
 } from "../repository/member.repository";

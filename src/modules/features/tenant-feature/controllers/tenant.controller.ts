@@ -1,7 +1,7 @@
 import { CurrentUser } from "@infrastructure/firebase-auth/decorators/current-user.decorator";
 import { Roles } from "@infrastructure/firebase-auth/decorators/roles.decorator";
 import { TenantGuard } from "@infrastructure/firebase-auth/guards/tenant.guard";
-import type { AuthUser } from "@infrastructure/firebase-auth/types/auth-user.type";
+import { AuthUser } from "@infrastructure/firebase-auth/types/auth-user.type";
 import {
 	Body,
 	Controller,
@@ -25,7 +25,7 @@ import {
 
 import { DeleteResponseDto } from "@shared/dto/delete-response.dto";
 
-import type {
+import {
 	CreateTenantRequestDto,
 	RenameTenantRequestDto,
 	UpdateTenantRequestDto,
@@ -35,7 +35,7 @@ import {
 	TenantListResponseDto,
 	TenantResponseDto,
 } from "../dto/tenant.response.dto";
-import type { TenantFeatureService } from "../services/tenant-feature.service";
+import { TenantFeatureService } from "../services/tenant-feature.service";
 
 @ApiTags("tenants")
 @ApiBearerAuth("Bearer")

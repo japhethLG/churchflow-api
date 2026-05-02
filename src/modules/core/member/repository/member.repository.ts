@@ -1,9 +1,9 @@
-import type { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
+import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
 import { Injectable } from "@nestjs/common";
-import type { Member, Prisma } from "@prisma/client";
+import { Member, Prisma } from "@prisma/client";
 import dayjs from "@shared/dayjs";
 
-import type {
+import {
 	CreateMemberInput,
 	MemberFilters,
 	UpdateMemberInput,

@@ -1,4 +1,4 @@
-import type { AuditAction } from "@prisma/client";
+import { AuditAction } from "@prisma/client";
 
 export interface WriteAuditEventInput {
 	tenantId: string | null;

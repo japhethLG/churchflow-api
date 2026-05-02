@@ -1,9 +1,9 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 
-import type { Invitation } from "@prisma/client";
+import { Invitation } from "@prisma/client";
 
-import type { CreateInvitationInput } from "../invitation.types";
-import type { InvitationRepository } from "../repository/invitation.repository";
+import { CreateInvitationInput } from "../invitation.types";
+import { InvitationRepository } from "../repository/invitation.repository";
 
 @Injectable()
 export class InvitationService {

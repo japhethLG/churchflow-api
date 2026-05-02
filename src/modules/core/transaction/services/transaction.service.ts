@@ -1,12 +1,12 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 
-import type { Transaction } from "@prisma/client";
-import type {
+import { Transaction } from "@prisma/client";
+import {
 	TransactionListResult,
 	TransactionRepository,
 	TransactionSummaryResult,
 } from "../repository/transaction.repository";
-import type {
+import {
 	CreateTransactionInput,
 	TransactionFilters,
 	UpdateTransactionInput,

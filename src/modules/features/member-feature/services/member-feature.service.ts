@@ -1,13 +1,13 @@
-import type {
+import {
 	AuthUser,
 	TenantContext,
 } from "@infrastructure/firebase-auth/types/auth-user.type";
-import type { UserClaimsService } from "@infrastructure/firebase-auth/user-claims.service";
-import type { AuditService } from "@modules/core/audit/services/audit.service";
-import type { MemberListResult } from "@modules/core/member/repository/member.repository";
-import type { MemberService } from "@modules/core/member/services/member.service";
-import type { UserService } from "@modules/core/user/services/user.service";
-import type {
+import { UserClaimsService } from "@infrastructure/firebase-auth/user-claims.service";
+import { AuditService } from "@modules/core/audit/services/audit.service";
+import { MemberListResult } from "@modules/core/member/repository/member.repository";
+import { MemberService } from "@modules/core/member/services/member.service";
+import { UserService } from "@modules/core/user/services/user.service";
+import {
 	MemberMergingService,
 	MergePreview,
 	MergeResult,
@@ -15,7 +15,7 @@ import type {
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { AuditAction, type Member } from "@prisma/client";
 
-import type {
+import {
 	CreateMemberRequestDto,
 	MemberFiltersRequestDto,
 	UpdateMemberRequestDto,

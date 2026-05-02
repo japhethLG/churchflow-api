@@ -1,12 +1,16 @@
-import type { CanActivate, ExecutionContext } from "@nestjs/common";
-import { Injectable, UnauthorizedException } from "@nestjs/common";
-import type { Reflector } from "@nestjs/core";
+import {
+	CanActivate,
+	ExecutionContext,
+	Injectable,
+	UnauthorizedException,
+} from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
 
-import type { Request } from "express";
+import { Request } from "express";
 
 import { IS_PUBLIC_KEY } from "../decorators/public.decorator";
-import type { FirebaseAdminService } from "../firebase-admin.service";
-import type { AuthUser, TenantMembershipClaim } from "../types/auth-user.type";
+import { FirebaseAdminService } from "../firebase-admin.service";
+import { AuthUser, TenantMembershipClaim } from "../types/auth-user.type";
 
 @Injectable()
 export class FirebaseAuthGuard implements CanActivate {
