@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import type { Campaign, Prisma } from '@prisma/client';
 
 import { PrismaClientService } from '@infrastructure/prisma-client/prisma-client.service';
+import dayjs from '@shared/dayjs';
 
 import type {
   CampaignFilters,
@@ -54,7 +55,7 @@ export class CampaignRepository {
   }
 
   async softDelete(_tenantId: string, id: string): Promise<Campaign> {
-    return this.prisma.campaign.update({ where: { id }, data: { deletedAt: new Date() } });
+    return this.prisma.campaign.update({ where: { id }, data: { deletedAt: dayjs().toDate() } });
   }
 
   async restore(_tenantId: string, id: string): Promise<Campaign> {

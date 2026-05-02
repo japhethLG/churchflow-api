@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import type { Member, Prisma } from '@prisma/client';
 
 import { PrismaClientService } from '@infrastructure/prisma-client/prisma-client.service';
+import dayjs from '@shared/dayjs';
 
 import type { CreateMemberInput, MemberFilters, UpdateMemberInput } from '../member.types';
 
@@ -61,6 +62,6 @@ export class MemberRepository {
   }
 
   async softDelete(_tenantId: string, id: string): Promise<Member> {
-    return this.prisma.member.update({ where: { id }, data: { deletedAt: new Date() } });
+    return this.prisma.member.update({ where: { id }, data: { deletedAt: dayjs().toDate() } });
   }
 }

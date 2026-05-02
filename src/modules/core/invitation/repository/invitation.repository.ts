@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { InvitationStatus, type Invitation } from '@prisma/client';
 
 import { PrismaClientService } from '@infrastructure/prisma-client/prisma-client.service';
+import dayjs from '@shared/dayjs';
 
 import type { CreateInvitationInput } from '../invitation.types';
 
@@ -38,7 +39,7 @@ export class InvitationRepository {
   // Used for rate-limiting: how many invitations has this tenant issued in
   // the last `windowMs` milliseconds?
   async countRecentForTenant(tenantId: string, windowMs: number): Promise<number> {
-    const since = new Date(Date.now() - windowMs);
+    const since = dayjs().subtract(windowMs, 'millisecond').toDate();
     return this.prisma.invitation.count({
       where: { tenantId, createdAt: { gte: since } },
     });
@@ -61,7 +62,7 @@ export class InvitationRepository {
   async markAccepted(id: string): Promise<Invitation> {
     return this.prisma.invitation.update({
       where: { id },
-      data: { status: InvitationStatus.ACCEPTED, acceptedAt: new Date() },
+      data: { status: InvitationStatus.ACCEPTED, acceptedAt: dayjs().toDate() },
     });
   }
 

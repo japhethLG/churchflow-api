@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import type { Tenant } from '@prisma/client';
 
 import { PrismaClientService } from '@infrastructure/prisma-client/prisma-client.service';
+import dayjs from '@shared/dayjs';
 
 import type { CreateTenantInput, UpdateTenantInput } from '../tenant.types';
 
@@ -68,7 +69,7 @@ export class TenantRepository {
   async softDelete(id: string): Promise<Tenant> {
     return this.prisma.tenant.update({
       where: { id },
-      data: { deletedAt: new Date() },
+      data: { deletedAt: dayjs().toDate() },
     });
   }
 

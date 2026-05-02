@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import dayjs from '@shared/dayjs';
 
 import { AuditAction, MemberRole, type Tenant } from '@prisma/client';
 
@@ -48,7 +49,7 @@ export class TenantFeatureService {
   }
 
   private async enrichTenant(tenant: Tenant): Promise<TenantListItemDto> {
-    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const monthStart = dayjs().startOf('month').toDate();
 
     const [adminCount, memberCount, adminsRaw, giftsMtd] = await Promise.all([
       this.prisma.member.count({ where: { tenantId: tenant.id, deletedAt: null, role: MemberRole.ADMIN } }),

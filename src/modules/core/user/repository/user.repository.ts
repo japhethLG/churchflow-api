@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import type { User } from '@prisma/client';
 
 import { PrismaClientService } from '@infrastructure/prisma-client/prisma-client.service';
+import dayjs from '@shared/dayjs';
 
 import type { CreateUserInput, UpdateUserInput } from '../user.types';
 
@@ -31,6 +32,6 @@ export class UserRepository {
   }
 
   async softDelete(id: string): Promise<User> {
-    return this.prisma.user.update({ where: { id }, data: { deletedAt: new Date() } });
+    return this.prisma.user.update({ where: { id }, data: { deletedAt: dayjs().toDate() } });
   }
 }

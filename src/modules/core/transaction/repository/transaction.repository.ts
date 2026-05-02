@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma, Transaction, TransactionType } from '@prisma/client';
 
 import { PrismaClientService } from '@infrastructure/prisma-client/prisma-client.service';
+import dayjs from '@shared/dayjs';
 
 import type {
   CreateTransactionInput,
@@ -102,7 +103,7 @@ export class TransactionRepository {
         count: row._count._all,
       })),
       byMonth: byMonthRaw.map((row) => ({
-        month: new Date(row.month).toISOString().slice(0, 7),
+        month: dayjs(row.month).format('YYYY-MM'),
         total: Number(row.total ?? 0),
         count: Number(row.count ?? 0),
       })),
@@ -114,7 +115,7 @@ export class TransactionRepository {
   }
 
   async softDelete(_tenantId: string, id: string): Promise<Transaction> {
-    return this.prisma.transaction.update({ where: { id }, data: { deletedAt: new Date() } });
+    return this.prisma.transaction.update({ where: { id }, data: { deletedAt: dayjs().toDate() } });
   }
 
   // Reassign every transaction belonging to one member to another. Used by

@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import type { Pledge, Prisma } from '@prisma/client';
 
 import { PrismaClientService } from '@infrastructure/prisma-client/prisma-client.service';
+import dayjs from '@shared/dayjs';
 
 import type {
   CreatePledgeInput,
@@ -57,7 +58,7 @@ export class PledgeRepository {
   }
 
   async softDelete(_tenantId: string, id: string): Promise<Pledge> {
-    return this.prisma.pledge.update({ where: { id }, data: { deletedAt: new Date() } });
+    return this.prisma.pledge.update({ where: { id }, data: { deletedAt: dayjs().toDate() } });
   }
 
   async reassignMember(

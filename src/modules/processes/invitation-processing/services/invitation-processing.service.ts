@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import dayjs from '@shared/dayjs';
 
 import {
   AuditAction,
@@ -97,7 +98,7 @@ export class InvitationProcessingService {
     }
 
     const token = randomUUID();
-    const expiresAt = new Date(Date.now() + INVITATION_TTL_DAYS * 24 * 60 * 60 * 1000);
+    const expiresAt = dayjs().add(INVITATION_TTL_DAYS, 'day').toDate();
 
     const invitation = await this.invitationService.create({
       tenantId: input.tenantId,
@@ -130,7 +131,7 @@ export class InvitationProcessingService {
       throw new BadRequestException('Invitation is no longer pending');
     }
 
-    if (invitation.expiresAt < new Date()) {
+    if (dayjs(invitation.expiresAt).isBefore(dayjs())) {
       await this.invitationService.markExpired(invitation.id);
       throw new BadRequestException('Invitation expired');
     }
@@ -236,7 +237,7 @@ export class InvitationProcessingService {
     if (invitation.status !== InvitationStatus.PENDING) {
       throw new BadRequestException('Invitation is no longer pending');
     }
-    if (invitation.expiresAt < new Date()) {
+    if (dayjs(invitation.expiresAt).isBefore(dayjs())) {
       throw new BadRequestException('Invitation expired');
     }
     const [tenant, inviter] = await Promise.all([
@@ -264,11 +265,11 @@ export class InvitationProcessingService {
       <p>Hi,</p>
       <p>You've been invited to join <strong>${escapeHtml(tenantName)}</strong> on ChurchFlow as ${invitation.role === MemberRole.ADMIN ? 'an admin' : 'a member'}.</p>
       <p><a href="${link}">Click here to accept the invitation</a></p>
-      <p>This link expires on ${invitation.expiresAt.toISOString().slice(0, 10)}.</p>
+      <p>This link expires on ${dayjs(invitation.expiresAt).format('YYYY-MM-DD')}.</p>
       <p>If you weren't expecting this email, you can ignore it.</p>
       <p style="color:#888;font-size:12px">Tenant: ${tenantSlug}</p>
     `;
-    const text = `You've been invited to ${tenantName} on ChurchFlow. Accept: ${link} (expires ${invitation.expiresAt.toISOString().slice(0, 10)})`;
+    const text = `You've been invited to ${tenantName} on ChurchFlow. Accept: ${link} (expires ${dayjs(invitation.expiresAt).format('YYYY-MM-DD')})`;
 
     try {
       await this.email.send({ to: invitation.email, subject, html, text });

@@ -9,6 +9,7 @@
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { randomUUID } from 'node:crypto';
+import dayjs from 'dayjs';
 
 const DATABASE_URL =
   process.env.DATABASE_URL ??
@@ -126,7 +127,7 @@ async function main(): Promise<void> {
         description: 'Raising funds for the new sanctuary construction.',
         status: 'ACTIVE',
         createdBy: adminUser.firebaseUid,
-        deadline: new Date('2027-12-31'),
+        deadline: dayjs('2027-12-31').toDate(),
       },
     }));
 
@@ -183,7 +184,7 @@ async function main(): Promise<void> {
           memberId: maryMember.id,
           type: 'TITHE',
           amount: 150,
-          date: new Date('2026-04-07'),
+          date: dayjs('2026-04-07').toDate(),
           createdBy: adminUser.firebaseUid,
         },
         {
@@ -192,7 +193,7 @@ async function main(): Promise<void> {
           memberId: maryMember.id,
           type: 'OFFERING',
           amount: 40,
-          date: new Date('2026-04-14'),
+          date: dayjs('2026-04-14').toDate(),
           createdBy: adminUser.firebaseUid,
         },
         {
@@ -204,7 +205,7 @@ async function main(): Promise<void> {
           campaignItemId: pledge.campaignItemId,
           type: 'COMMITMENT',
           amount: 2500,
-          date: new Date('2026-04-21'),
+          date: dayjs('2026-04-21').toDate(),
           referenceNumber: 'TRF-2026-0421',
           createdBy: adminUser.firebaseUid,
         },

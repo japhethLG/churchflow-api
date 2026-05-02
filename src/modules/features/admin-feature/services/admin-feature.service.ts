@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import dayjs from '@shared/dayjs';
 
 import { AuditAction, MemberRole } from '@prisma/client';
 
@@ -28,9 +29,8 @@ export class AdminFeatureService {
   ) {}
 
   async getPlatformStats(): Promise<PlatformStatsDto> {
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const last30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const monthStart = dayjs().startOf('month').toDate();
+    const last30d = dayjs().subtract(30, 'day').toDate();
 
     const [
       totalTenants,

@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import dayjs from '@shared/dayjs';
 
 import { AuditAction, type Transaction } from '@prisma/client';
 
@@ -132,9 +133,9 @@ export class TransactionFeatureService {
     months?: number,
   ): Promise<TransactionSummaryResult> {
     const window = Math.max(1, Math.min(months ?? 12, 60));
-    const now = new Date();
-    const dateTo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
-    const dateFrom = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - window + 1, 1));
+    const now = dayjs.utc();
+    const dateTo = now.endOf('month').toDate();
+    const dateFrom = now.subtract(window - 1, 'month').startOf('month').toDate();
 
     return this.transactionService.summary(tenant.tenantId, dateFrom, dateTo);
   }

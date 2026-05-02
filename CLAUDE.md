@@ -550,7 +550,7 @@ build time.
 ### 8.3 Soft delete
 
 Every entity has `deletedAt: DateTime?`. Read queries MUST filter
-`deletedAt: null`. Delete operations set `deletedAt: new Date()` rather
+`deletedAt: null`. Delete operations set `deletedAt: dayjs().toDate()` rather
 than hard-deleting.
 
 There is currently no Prisma extension automating this — repositories do it
@@ -747,3 +747,15 @@ Before you save changes:
 8. Did you run `npm run prisma:generate` after editing the schema?
 
 If all eight are clean, the change is safe to commit.
+ 
+ ---
+ 
+ ## 14. Date Handling
+ 
+ We exclusively use **dayjs** for all date manipulation, parsing, and arithmetic.
+ 
+ - **Single Source of Truth:** Always import `dayjs` from `@shared/dayjs` to ensure plugins (UTC, etc.) are loaded.
+ - **Prisma Compatibility:** When saving a date to a Prisma `DateTime` field, use `dayjs(val).toDate()`. Prisma expects native JS `Date` objects.
+ - **No `new Date()`:** Do not use `new Date()` or `Date.now()`. Use `dayjs()` instead.
+ - **UTC:** Prefer `dayjs.utc()` for calculations where timezone consistency is critical.
+
