@@ -1,16 +1,16 @@
-import { config } from 'dotenv';
-import { expand } from 'dotenv-expand';
+import { config } from "dotenv";
+import { expand } from "dotenv-expand";
 
 expand(config());
 
-import { defineConfig, env } from 'prisma/config';
+import { defineConfig, env } from "prisma/config";
 
 export default defineConfig({
-  schema: 'prisma/schema',
-  migrations: {
-    path: 'prisma/migrations',
-  },
-  datasource: {
-    url: env('DATABASE_URL'),
-  },
+	schema: "prisma/schema",
+	migrations: {
+		path: "prisma/migrations",
+	},
+	datasource: {
+		url: env("DATABASE_URL"),
+	},
 });

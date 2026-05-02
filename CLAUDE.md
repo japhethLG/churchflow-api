@@ -79,8 +79,9 @@ npm run prisma:migrate         # create + apply dev migration
 npm run prisma:studio          # GUI DB browser
 npm run start:dev              # SWC watch mode on :8000
 npm run build                  # production build via SWC
-npm run lint                   # eslint --fix
-npm run format                 # prettier --write
+npm run lint                   # biome lint .
+npm run format                 # biome format . --write
+npm run check                  # biome check --write .
 ```
 
 Docs: <http://localhost:8000/api-docs> (Scalar UI) · <http://localhost:8000/api-docs-json> (raw OpenAPI).

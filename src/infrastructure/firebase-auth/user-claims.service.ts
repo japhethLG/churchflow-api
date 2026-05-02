@@ -1,11 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import type { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
+import { Injectable, Logger } from "@nestjs/common";
+import type { MemberRole } from "@prisma/client";
 
-import { MemberRole } from '@prisma/client';
-
-import { PrismaClientService } from '@infrastructure/prisma-client/prisma-client.service';
-
-import { FirebaseAdminService } from './firebase-admin.service';
-import type { TenantMembershipClaim } from './types/auth-user.type';
+import type { FirebaseAdminService } from "./firebase-admin.service";
+import type { TenantMembershipClaim } from "./types/auth-user.type";
 
 // Rebuilds a user's Firebase custom claims from the source-of-truth rows
 // in Postgres. Called by:
@@ -19,45 +17,49 @@ import type { TenantMembershipClaim } from './types/auth-user.type';
 // require Infra → Core, disallowed).
 @Injectable()
 export class UserClaimsService {
-  private readonly logger = new Logger(UserClaimsService.name);
+	private readonly logger = new Logger(UserClaimsService.name);
 
-  constructor(
-    private readonly firebase: FirebaseAdminService,
-    private readonly prisma: PrismaClientService,
-  ) {}
+	constructor(
+		private readonly firebase: FirebaseAdminService,
+		private readonly prisma: PrismaClientService,
+	) {}
 
-  async refreshFor(firebaseUid: string): Promise<{
-    isSuperAdmin: boolean;
-    memberships: Array<{ slug: string; memberId: string; role: MemberRole }>;
-  }> {
-    const user = await this.prisma.user.findUnique({ where: { firebaseUid } });
-    if (!user) {
-      this.logger.warn(`refreshFor: no user for firebaseUid=${firebaseUid}`);
-      return { isSuperAdmin: false, memberships: [] };
-    }
+	async refreshFor(firebaseUid: string): Promise<{
+		isSuperAdmin: boolean;
+		memberships: Array<{ slug: string; memberId: string; role: MemberRole }>;
+	}> {
+		const user = await this.prisma.user.findUnique({ where: { firebaseUid } });
+		if (!user) {
+			this.logger.warn(`refreshFor: no user for firebaseUid=${firebaseUid}`);
+			return { isSuperAdmin: false, memberships: [] };
+		}
 
-    const members = await this.prisma.member.findMany({
-      where: { userId: user.id, deletedAt: null, tenant: { deletedAt: null } },
-      include: { tenant: { select: { slug: true, name: true } } },
-    });
+		const members = await this.prisma.member.findMany({
+			where: { userId: user.id, deletedAt: null, tenant: { deletedAt: null } },
+			include: { tenant: { select: { slug: true, name: true } } },
+		});
 
-    const memberships = members.map((m) => ({
-      slug: m.tenant.slug,
-      name: m.tenant.name,
-      memberId: m.id,
-      role: m.role,
-    }));
+		const memberships = members.map((m) => ({
+			slug: m.tenant.slug,
+			name: m.tenant.name,
+			memberId: m.id,
+			role: m.role,
+		}));
 
-    const tenantMemberships: Record<string, TenantMembershipClaim> = {};
-    for (const m of memberships) {
-      tenantMemberships[m.slug] = { memberId: m.memberId, role: m.role, name: m.name };
-    }
+		const tenantMemberships: Record<string, TenantMembershipClaim> = {};
+		for (const m of memberships) {
+			tenantMemberships[m.slug] = {
+				memberId: m.memberId,
+				role: m.role,
+				name: m.name,
+			};
+		}
 
-    await this.firebase.setCustomClaims(firebaseUid, {
-      isSuperAdmin: user.isSuperAdmin,
-      tenantMemberships,
-    });
+		await this.firebase.setCustomClaims(firebaseUid, {
+			isSuperAdmin: user.isSuperAdmin,
+			tenantMemberships,
+		});
 
-    return { isSuperAdmin: user.isSuperAdmin, memberships };
-  }
+		return { isSuperAdmin: user.isSuperAdmin, memberships };
+	}
 }

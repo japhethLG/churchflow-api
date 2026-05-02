@@ -1,29 +1,28 @@
-import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
+import { CurrentUser } from "@infrastructure/firebase-auth/decorators/current-user.decorator";
+import { Public } from "@infrastructure/firebase-auth/decorators/public.decorator";
+import type { AuthUser } from "@infrastructure/firebase-auth/types/auth-user.type";
+import { Body, Controller, Get, HttpCode, Post } from "@nestjs/common";
 import {
-  ApiBearerAuth,
-  ApiBody,
-  ApiOkResponse,
-  ApiOperation,
-  ApiTags,
-} from '@nestjs/swagger';
+	ApiBearerAuth,
+	ApiBody,
+	ApiOkResponse,
+	ApiOperation,
+	ApiTags,
+} from "@nestjs/swagger";
 
-import { CurrentUser } from '@infrastructure/firebase-auth/decorators/current-user.decorator';
-import { Public } from '@infrastructure/firebase-auth/decorators/public.decorator';
-import type { AuthUser } from '@infrastructure/firebase-auth/types/auth-user.type';
-
-import { ExchangeTokenRequestDto } from '../dto/exchange-token.dto';
+import { ExchangeTokenRequestDto } from "../dto/exchange-token.dto";
 import {
-  AuthMeResponseDto,
-  SessionResponseDto,
-} from '../dto/session-response.dto';
-import { AuthFeatureService } from '../services/auth-feature.service';
+	AuthMeResponseDto,
+	SessionResponseDto,
+} from "../dto/session-response.dto";
+import type { AuthFeatureService } from "../services/auth-feature.service";
 
-@ApiTags('auth')
-@Controller('auth')
+@ApiTags("auth")
+@Controller("auth")
 export class AuthController {
-  constructor(private readonly authFeatureService: AuthFeatureService) {}
+	constructor(private readonly authFeatureService: AuthFeatureService) {}
 
-  @Public()
+	@Public()
   @Post('session')
   @HttpCode(200)
   @ApiOperation({
@@ -39,7 +38,7 @@ export class AuthController {
     ) as unknown as Promise<SessionResponseDto>;
   }
 
-  @ApiBearerAuth('Bearer')
+	@ApiBearerAuth('Bearer')
   @Get('me')
   @ApiOperation({
     summary: 'Return the decoded Firebase token for the current request',

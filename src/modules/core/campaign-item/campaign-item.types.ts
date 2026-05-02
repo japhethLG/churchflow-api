@@ -1,21 +1,21 @@
 export interface CreateCampaignItemInput {
-  tenantId: string;
-  campaignId: string;
-  title: string;
-  description?: string | null;
-  targetAmount: number;
-  deadline?: Date | null;
-  sortOrder?: number;
+	tenantId: string;
+	campaignId: string;
+	title: string;
+	description?: string | null;
+	targetAmount: number;
+	deadline?: Date | null;
+	sortOrder?: number;
 }
 
 export interface UpdateCampaignItemInput {
-  title?: string;
-  description?: string | null;
-  targetAmount?: number;
-  deadline?: Date | null;
-  sortOrder?: number;
+	title?: string;
+	description?: string | null;
+	targetAmount?: number;
+	deadline?: Date | null;
+	sortOrder?: number;
 }
 
 export interface CampaignItemFilters {
-  campaignId?: string;
+	campaignId?: string;
 }
