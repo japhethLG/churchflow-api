@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 
-import {  IEmailProvider, SendEmailInput  } from "./email.interface";
+import { IEmailProvider, SendEmailInput } from "./email.interface";
 
 // Resend provider. Uses the HTTP API directly to avoid pulling the full
 // SDK (NestJS + SWC is fussy about ESM-only deps).

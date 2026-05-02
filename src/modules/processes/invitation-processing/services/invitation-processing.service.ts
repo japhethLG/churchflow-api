@@ -3,12 +3,12 @@ import {
 	EMAIL_PROVIDER,
 	type IEmailProvider,
 } from "@infrastructure/email/email.interface";
-import {  UserClaimsService  } from "@infrastructure/firebase-auth/user-claims.service";
-import {  AuditService  } from "@modules/core/audit/services/audit.service";
-import {  InvitationService  } from "@modules/core/invitation/services/invitation.service";
-import {  MemberService  } from "@modules/core/member/services/member.service";
-import {  TenantService  } from "@modules/core/tenant/services/tenant.service";
-import {  UserService  } from "@modules/core/user/services/user.service";
+import { UserClaimsService } from "@infrastructure/firebase-auth/user-claims.service";
+import { AuditService } from "@modules/core/audit/services/audit.service";
+import { InvitationService } from "@modules/core/invitation/services/invitation.service";
+import { MemberService } from "@modules/core/member/services/member.service";
+import { TenantService } from "@modules/core/tenant/services/tenant.service";
+import { UserService } from "@modules/core/user/services/user.service";
 import {
 	BadRequestException,
 	ConflictException,
