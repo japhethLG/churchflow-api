@@ -1,4 +1,5 @@
 import { CurrentUser } from "@infrastructure/firebase-auth/decorators/current-user.decorator";
+import { RefreshesClaims } from "@infrastructure/firebase-auth/decorators/refreshes-claims.decorator";
 import { Roles } from "@infrastructure/firebase-auth/decorators/roles.decorator";
 import { AuthUser } from "@infrastructure/firebase-auth/types/auth-user.type";
 import { Body, Controller, Get, Param, Patch, Query } from "@nestjs/common";
@@ -48,6 +49,7 @@ export class AdminController {
 	}
 
 	@Patch("users/:id")
+	@RefreshesClaims()
 	@ApiOperation({
 		summary: "Toggle super-admin status for a user (super admin only)",
 	})

@@ -5,6 +5,7 @@ import { Body, Controller, Get, HttpCode, Post } from "@nestjs/common";
 import {
 	ApiBearerAuth,
 	ApiBody,
+	ApiNoContentResponse,
 	ApiOkResponse,
 	ApiOperation,
 	ApiTags,
@@ -50,5 +51,18 @@ export class AuthController {
 	@ApiOkResponse({ type: AuthMeResponseDto })
 	me(@CurrentUser() user: AuthUser): AuthMeResponseDto {
 		return user as AuthMeResponseDto;
+	}
+
+	@ApiBearerAuth("Bearer")
+	@Post("sign-out-everywhere")
+	@HttpCode(204)
+	@ApiOperation({
+		summary: "Revoke every refresh token for the caller's Firebase user",
+		description:
+			"Invalidates session cookies on every other device/tab. The current device must still call DELETE /api/auth/session and Firebase signOut() locally.",
+	})
+	@ApiNoContentResponse()
+	async signOutEverywhere(@CurrentUser() user: AuthUser): Promise<void> {
+		await this.authFeatureService.signOutEverywhere(user.firebaseUid);
 	}
 }

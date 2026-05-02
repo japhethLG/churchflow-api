@@ -1,7 +1,8 @@
+import { ClaimsRefreshInterceptor } from "@infrastructure/config/interceptors/claims-refresh.interceptor";
 import { GlobalResponseInterceptor } from "@infrastructure/config/interceptors/global-response.interceptor";
 import { ValidationPipe, VersioningType } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { NestFactory } from "@nestjs/core";
+import { NestFactory, Reflector } from "@nestjs/core";
 
 import { MainModule } from "./main.module";
 import { setupSwagger } from "./swagger.config";
@@ -14,7 +15,11 @@ async function bootstrap(): Promise<void> {
 	app.setGlobalPrefix("api");
 	app.enableVersioning({ type: VersioningType.URI, defaultVersion: "1" });
 
-	app.useGlobalInterceptors(new GlobalResponseInterceptor());
+	const reflector = app.get(Reflector);
+	app.useGlobalInterceptors(
+		new ClaimsRefreshInterceptor(reflector),
+		new GlobalResponseInterceptor(),
+	);
 	app.useGlobalPipes(
 		new ValidationPipe({
 			whitelist: true,
@@ -28,6 +33,10 @@ async function bootstrap(): Promise<void> {
 		origin: true,
 		methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
 		credentials: true,
+		// Browsers hide non-simple response headers from JS unless
+		// explicitly exposed. The frontend reads X-Claims-Refreshed to
+		// know when to re-mint the Next session cookie.
+		exposedHeaders: ["X-Claims-Refreshed"],
 	});
 
 	setupSwagger(app);

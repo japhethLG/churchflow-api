@@ -29,11 +29,14 @@ export class FirebaseAuthGuard implements CanActivate {
 		const req = context
 			.switchToHttp()
 			.getRequest<Request & { user?: AuthUser }>();
-		const token = this.extractToken(req);
-		if (!token) throw new UnauthorizedException("Missing bearer token");
+		const credential = this.extractCredential(req);
+		if (!credential) throw new UnauthorizedException("Missing bearer token");
 
 		try {
-			const decoded = await this.firebase.verifyIdToken(token);
+			const decoded =
+				credential.scheme === "bearer"
+					? await this.firebase.verifyIdToken(credential.value)
+					: await this.firebase.verifySessionCookie(credential.value);
 			req.user = {
 				firebaseUid: decoded.uid,
 				email: decoded.email ?? "",
@@ -72,11 +75,23 @@ export class FirebaseAuthGuard implements CanActivate {
 		return out;
 	}
 
-	private extractToken(req: Request): string | null {
+	// Two accepted schemes:
+	//   "Bearer <ID token>"        — browser sending a Firebase ID token.
+	//   "SessionCookie <cookie>"   — Next server forwarding the user's
+	//                                  HTTP-only session cookie for an
+	//                                  RSC-side fetch (the cookie is
+	//                                  unreadable from JS so it has to
+	//                                  be carried server-side).
+	private extractCredential(
+		req: Request,
+	): { scheme: "bearer" | "session-cookie"; value: string } | null {
 		const header = req.headers.authorization;
 		if (!header || typeof header !== "string") return null;
-		const [scheme, value] = header.split(" ");
-		if (scheme?.toLowerCase() !== "bearer" || !value) return null;
-		return value;
+		const [rawScheme, value] = header.split(" ");
+		if (!value) return null;
+		const scheme = rawScheme?.toLowerCase();
+		if (scheme === "bearer") return { scheme: "bearer", value };
+		if (scheme === "sessioncookie") return { scheme: "session-cookie", value };
+		return null;
 	}
 }

@@ -29,6 +29,15 @@ export class FirebaseAdminService implements OnModuleInit {
 		return this.getAuth().verifyIdToken(idToken, true);
 	}
 
+	// Verifies a Firebase session cookie (the long-lived cookie minted by
+	// adminAuth.createSessionCookie). Decoded shape mirrors verifyIdToken
+	// so the guard can treat both auth schemes identically.
+	async verifySessionCookie(
+		sessionCookie: string,
+	): Promise<admin.auth.DecodedIdToken> {
+		return this.getAuth().verifySessionCookie(sessionCookie, true);
+	}
+
 	async setCustomClaims(
 		uid: string,
 		claims: Record<string, unknown>,

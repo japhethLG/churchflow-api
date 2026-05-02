@@ -1,6 +1,7 @@
 import { CurrentTenant } from "@infrastructure/firebase-auth/decorators/current-tenant.decorator";
 import { CurrentUser } from "@infrastructure/firebase-auth/decorators/current-user.decorator";
 import { Public } from "@infrastructure/firebase-auth/decorators/public.decorator";
+import { RefreshesClaims } from "@infrastructure/firebase-auth/decorators/refreshes-claims.decorator";
 import { TenantRoles } from "@infrastructure/firebase-auth/decorators/roles.decorator";
 import { TenantGuard } from "@infrastructure/firebase-auth/guards/tenant.guard";
 import {
@@ -101,6 +102,7 @@ export class InvitationController {
 	}
 
 	@ApiBearerAuth("Bearer")
+	@RefreshesClaims()
 	@Post("invitations/accept")
 	@ApiOperation({
 		summary: "Accept an invitation using the token emailed to the invitee",

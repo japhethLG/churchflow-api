@@ -65,4 +65,13 @@ export class AuthFeatureService {
 
 		return { user, tenantMemberships, isSuperAdmin: user.isSuperAdmin };
 	}
+
+	// Revokes every refresh token for the caller's Firebase user. Any
+	// session cookie minted from a token issued before this call will
+	// fail verifySessionCookie(_, true) — which is what kicks other tabs
+	// and devices to /login. The caller's *current* device is logged out
+	// by the client (Firebase signOut + DELETE /api/auth/session).
+	async signOutEverywhere(firebaseUid: string): Promise<void> {
+		await this.firebase.getAuth().revokeRefreshTokens(firebaseUid);
+	}
 }
