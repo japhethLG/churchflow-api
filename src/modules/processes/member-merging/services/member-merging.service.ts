@@ -109,14 +109,18 @@ export class MemberMergingService {
 		// the keep memberId on next token refresh.
 		if (drop.userId) {
 			const linkedUser = await this.userService.findById(drop.userId);
-			if (linkedUser) await this.userClaims.refreshFor(linkedUser.firebaseUid);
+			if (linkedUser) {
+				await this.userClaims.refreshFor(linkedUser.firebaseUid);
+			}
 		}
 		// Same for keep when its userId got copied from drop.
 		if (patch.userId && merged.userId && merged.userId !== keep.userId) {
 			const linkedUser = await this.userService.findById(
 				merged.userId as string,
 			);
-			if (linkedUser) await this.userClaims.refreshFor(linkedUser.firebaseUid);
+			if (linkedUser) {
+				await this.userClaims.refreshFor(linkedUser.firebaseUid);
+			}
 		}
 
 		await this.auditService.record({
@@ -176,9 +180,17 @@ function collectFieldsToCopy(
 	drop: Member,
 ): Array<"email" | "phone" | "address" | "userId"> {
 	const fields: Array<"email" | "phone" | "address" | "userId"> = [];
-	if (!keep.email && drop.email) fields.push("email");
-	if (!keep.phone && drop.phone) fields.push("phone");
-	if (!keep.address && drop.address) fields.push("address");
-	if (!keep.userId && drop.userId) fields.push("userId");
+	if (!keep.email && drop.email) {
+		fields.push("email");
+	}
+	if (!keep.phone && drop.phone) {
+		fields.push("phone");
+	}
+	if (!keep.address && drop.address) {
+		fields.push("address");
+	}
+	if (!keep.userId && drop.userId) {
+		fields.push("userId");
+	}
 	return fields;
 }

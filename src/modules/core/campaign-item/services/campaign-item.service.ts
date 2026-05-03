@@ -19,7 +19,9 @@ export class CampaignItemService {
 
 	async getById(tenantId: string, id: string): Promise<CampaignItem> {
 		const item = await this.repository.findById(tenantId, id);
-		if (!item) throw new NotFoundException(`Campaign item not found: ${id}`);
+		if (!item) {
+			throw new NotFoundException(`Campaign item not found: ${id}`);
+		}
 		return item;
 	}
 

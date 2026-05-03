@@ -22,7 +22,9 @@ export class TransactionService {
 
 	async getById(tenantId: string, id: string): Promise<Transaction> {
 		const tx = await this.transactionRepository.findById(tenantId, id);
-		if (!tx) throw new NotFoundException(`Transaction not found: ${id}`);
+		if (!tx) {
+			throw new NotFoundException(`Transaction not found: ${id}`);
+		}
 		return tx;
 	}
 

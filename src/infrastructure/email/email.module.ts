@@ -52,8 +52,12 @@ import { ResendEmailProvider } from "./resend.provider";
 				resend: ResendEmailProvider | null,
 				console: ConsoleEmailProvider,
 			) => {
-				if (config.get<string>("GMAIL_APP_PASSWORD") && gmail) return gmail;
-				if (config.get<string>("RESEND_API_KEY") && resend) return resend;
+				if (config.get<string>("GMAIL_APP_PASSWORD") && gmail) {
+					return gmail;
+				}
+				if (config.get<string>("RESEND_API_KEY") && resend) {
+					return resend;
+				}
 				return console;
 			},
 		},

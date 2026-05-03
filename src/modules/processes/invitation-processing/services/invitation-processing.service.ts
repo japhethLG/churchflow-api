@@ -137,10 +137,11 @@ export class InvitationProcessingService {
 		}
 
 		const user = await this.userService.findByFirebaseUid(firebaseUid);
-		if (!user)
+		if (!user) {
 			throw new BadRequestException(
 				"User profile must exist before accepting invitation",
 			);
+		}
 
 		if (invitation.memberId) {
 			// Claim flow. Link the existing temp Member to the signed-in user

@@ -22,7 +22,9 @@ export class PledgeService {
 
 	async getById(tenantId: string, id: string): Promise<Pledge> {
 		const pledge = await this.pledgeRepository.findById(tenantId, id);
-		if (!pledge) throw new NotFoundException(`Pledge not found: ${id}`);
+		if (!pledge) {
+			throw new NotFoundException(`Pledge not found: ${id}`);
+		}
 		return pledge;
 	}
 

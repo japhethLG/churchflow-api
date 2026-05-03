@@ -22,7 +22,9 @@ export class CampaignService {
 
 	async getById(tenantId: string, id: string): Promise<Campaign> {
 		const campaign = await this.campaignRepository.findById(tenantId, id);
-		if (!campaign) throw new NotFoundException(`Campaign not found: ${id}`);
+		if (!campaign) {
+			throw new NotFoundException(`Campaign not found: ${id}`);
+		}
 		return campaign;
 	}
 
@@ -52,7 +54,9 @@ export class CampaignService {
 			tenantId,
 			id,
 		);
-		if (!existing) throw new NotFoundException(`Campaign not found: ${id}`);
+		if (!existing) {
+			throw new NotFoundException(`Campaign not found: ${id}`);
+		}
 		return this.campaignRepository.restore(tenantId, id);
 	}
 

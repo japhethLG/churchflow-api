@@ -44,7 +44,9 @@ export class AbilityInterceptor implements NestInterceptor {
 		tenant: TenantContext | undefined,
 		user: AuthUser | undefined,
 	): AppAbility {
-		if (tenant) return this.factory.createForTenant(tenant);
+		if (tenant) {
+			return this.factory.createForTenant(tenant);
+		}
 
 		// No tenant context — platform routes / pre-tenant flows.
 		if (user?.isSuperAdmin) {

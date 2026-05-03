@@ -22,7 +22,9 @@ export class MemberService {
 
 	async getById(tenantId: string, id: string): Promise<Member> {
 		const member = await this.memberRepository.findById(tenantId, id);
-		if (!member) throw new NotFoundException(`Member not found: ${id}`);
+		if (!member) {
+			throw new NotFoundException(`Member not found: ${id}`);
+		}
 		return member;
 	}
 

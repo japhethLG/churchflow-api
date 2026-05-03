@@ -24,13 +24,17 @@ export class FirebaseAuthGuard implements CanActivate {
 			context.getHandler(),
 			context.getClass(),
 		]);
-		if (isPublic) return true;
+		if (isPublic) {
+			return true;
+		}
 
 		const req = context
 			.switchToHttp()
 			.getRequest<Request & { user?: AuthUser }>();
 		const credential = this.extractCredential(req);
-		if (!credential) throw new UnauthorizedException("Missing bearer token");
+		if (!credential) {
+			throw new UnauthorizedException("Missing bearer token");
+		}
 
 		try {
 			const decoded =
@@ -54,12 +58,16 @@ export class FirebaseAuthGuard implements CanActivate {
 	// tenantMemberships claim shape is Record<slug, { memberId, role }>.
 	// Guard against malformed claims by coercing / dropping bad entries.
 	private readMemberships(raw: unknown): Record<string, TenantMembershipClaim> {
-		if (!raw || typeof raw !== "object") return {};
+		if (!raw || typeof raw !== "object") {
+			return {};
+		}
 		const out: Record<string, TenantMembershipClaim> = {};
 		for (const [slug, value] of Object.entries(
 			raw as Record<string, unknown>,
 		)) {
-			if (!value || typeof value !== "object") continue;
+			if (!value || typeof value !== "object") {
+				continue;
+			}
 			const entry = value as Record<string, unknown>;
 			const memberId =
 				typeof entry.memberId === "string" ? entry.memberId : undefined;
@@ -86,12 +94,20 @@ export class FirebaseAuthGuard implements CanActivate {
 		req: Request,
 	): { scheme: "bearer" | "session-cookie"; value: string } | null {
 		const header = req.headers.authorization;
-		if (!header || typeof header !== "string") return null;
+		if (!header || typeof header !== "string") {
+			return null;
+		}
 		const [rawScheme, value] = header.split(" ");
-		if (!value) return null;
+		if (!value) {
+			return null;
+		}
 		const scheme = rawScheme?.toLowerCase();
-		if (scheme === "bearer") return { scheme: "bearer", value };
-		if (scheme === "sessioncookie") return { scheme: "session-cookie", value };
+		if (scheme === "bearer") {
+			return { scheme: "bearer", value };
+		}
+		if (scheme === "sessioncookie") {
+			return { scheme: "session-cookie", value };
+		}
 		return null;
 	}
 }

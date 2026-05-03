@@ -48,7 +48,9 @@ export class PolicyGuard implements CanActivate {
 			POLICY_KEY,
 			[ctx.getHandler(), ctx.getClass()],
 		);
-		if (!rules || rules.length === 0) return true;
+		if (!rules || rules.length === 0) {
+			return true;
+		}
 
 		const req = ctx.switchToHttp().getRequest<
 			Request & {

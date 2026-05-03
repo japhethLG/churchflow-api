@@ -26,7 +26,8 @@
 				"noUnusedFunctionParameters": "off"
 			},
 			"style": {
-				"useImportType": "off"
+				"useImportType": "off",
+				"useBlockStatements": "error"
 			}
 		}
 	},

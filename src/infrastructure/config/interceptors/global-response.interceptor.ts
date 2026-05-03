@@ -23,9 +23,12 @@ export class GlobalResponseInterceptor<T>
 	): Observable<ApiResponse<T> | T> {
 		return next.handle().pipe(
 			map((data) => {
-				if (data === null || data === undefined) return data;
-				if (typeof data === "object" && data !== null && "success" in data)
+				if (data === null || data === undefined) {
 					return data;
+				}
+				if (typeof data === "object" && data !== null && "success" in data) {
+					return data;
+				}
 				return { success: true, data };
 			}),
 		);

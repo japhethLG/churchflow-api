@@ -15,13 +15,17 @@ export class InvitationService {
 
 	async getByToken(token: string): Promise<Invitation> {
 		const invitation = await this.invitationRepository.findByToken(token);
-		if (!invitation) throw new NotFoundException("Invitation not found");
+		if (!invitation) {
+			throw new NotFoundException("Invitation not found");
+		}
 		return invitation;
 	}
 
 	async getById(id: string): Promise<Invitation> {
 		const invitation = await this.invitationRepository.findById(id);
-		if (!invitation) throw new NotFoundException("Invitation not found");
+		if (!invitation) {
+			throw new NotFoundException("Invitation not found");
+		}
 		return invitation;
 	}
 

@@ -23,15 +23,21 @@ export class RolesGuard implements CanActivate {
 			ROLES_KEY,
 			[context.getHandler(), context.getClass()],
 		);
-		if (!required || required.length === 0) return true;
+		if (!required || required.length === 0) {
+			return true;
+		}
 
 		const req = context
 			.switchToHttp()
 			.getRequest<Request & { user?: AuthUser }>();
 		const user = req.user;
-		if (!user) throw new ForbiddenException("No authenticated user");
+		if (!user) {
+			throw new ForbiddenException("No authenticated user");
+		}
 
-		if (required.includes("SUPER_ADMIN") && user.isSuperAdmin) return true;
+		if (required.includes("SUPER_ADMIN") && user.isSuperAdmin) {
+			return true;
+		}
 
 		throw new ForbiddenException(`Requires one of: ${required.join(", ")}`);
 	}

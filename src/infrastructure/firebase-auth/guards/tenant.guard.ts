@@ -47,7 +47,9 @@ export class TenantGuard implements CanActivate {
 		>();
 
 		const user = req.user;
-		if (!user) throw new ForbiddenException("No authenticated user");
+		if (!user) {
+			throw new ForbiddenException("No authenticated user");
+		}
 
 		const idOrSlug = req.params.tenantId;
 		if (!idOrSlug) {
@@ -61,7 +63,9 @@ export class TenantGuard implements CanActivate {
 			},
 			select: { id: true, slug: true },
 		});
-		if (!tenant) throw new NotFoundException(`Tenant not found: ${idOrSlug}`);
+		if (!tenant) {
+			throw new NotFoundException(`Tenant not found: ${idOrSlug}`);
+		}
 
 		const membership = user.tenantMemberships[tenant.slug];
 		if (!membership && !user.isSuperAdmin) {

@@ -140,7 +140,9 @@ async function main(): Promise<void> {
 			const existing = await prisma.campaignItem.findFirst({
 				where: { tenantId: tenant.id, campaignId: campaign.id, title: i.title },
 			});
-			if (existing) return existing;
+			if (existing) {
+				return existing;
+			}
 			return prisma.campaignItem.create({
 				data: {
 					tenantId: tenant.id,

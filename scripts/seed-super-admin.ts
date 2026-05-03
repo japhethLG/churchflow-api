@@ -32,12 +32,16 @@ expand(loadEnv());
 
 function requireEnv(name: string): string {
 	const v = process.env[name];
-	if (!v) throw new Error(`Missing env var: ${name}`);
+	if (!v) {
+		throw new Error(`Missing env var: ${name}`);
+	}
 	return v;
 }
 
 function initAdmin(): void {
-	if (getApps()[0]) return;
+	if (getApps()[0]) {
+		return;
+	}
 
 	// Matches FirebaseAdminService.loadCredential — prefer a service-account
 	// path, fall back to the three-variable form. Stays in sync so dev and

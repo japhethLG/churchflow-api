@@ -27,7 +27,9 @@ export class ClaimsRefreshInterceptor implements NestInterceptor {
 
 		return next.handle().pipe(
 			tap(() => {
-				if (!refreshes) return;
+				if (!refreshes) {
+					return;
+				}
 				const res = context.switchToHttp().getResponse<Response>();
 				// Only set if not already sent — guards against duplicates if
 				// a handler chains multiple claim refreshes.

@@ -154,7 +154,9 @@ export class MemberFeatureService {
 		// claims so the change takes effect on next token refresh.
 		if (data.role && data.role !== before.role && member.userId) {
 			const linkedUser = await this.userService.findById(member.userId);
-			if (linkedUser) await this.userClaims.refreshFor(linkedUser.firebaseUid);
+			if (linkedUser) {
+				await this.userClaims.refreshFor(linkedUser.firebaseUid);
+			}
 			await this.auditService.record({
 				tenantId: tenant.tenantId,
 				actorUid: user.firebaseUid,
@@ -216,7 +218,9 @@ export class MemberFeatureService {
 		// Remove the tenant from the user's claims if they were linked.
 		if (member.userId) {
 			const linkedUser = await this.userService.findById(member.userId);
-			if (linkedUser) await this.userClaims.refreshFor(linkedUser.firebaseUid);
+			if (linkedUser) {
+				await this.userClaims.refreshFor(linkedUser.firebaseUid);
+			}
 		}
 
 		await this.auditService.record({

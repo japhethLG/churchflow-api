@@ -39,13 +39,17 @@ export class TenantService {
 
 	async getById(id: string): Promise<Tenant> {
 		const tenant = await this.tenantRepository.findById(id);
-		if (!tenant) throw new NotFoundException(`Tenant not found: ${id}`);
+		if (!tenant) {
+			throw new NotFoundException(`Tenant not found: ${id}`);
+		}
 		return tenant;
 	}
 
 	async getBySlug(slug: string): Promise<Tenant> {
 		const tenant = await this.tenantRepository.findBySlug(slug);
-		if (!tenant) throw new NotFoundException(`Tenant not found: ${slug}`);
+		if (!tenant) {
+			throw new NotFoundException(`Tenant not found: ${slug}`);
+		}
 		return tenant;
 	}
 
@@ -53,7 +57,9 @@ export class TenantService {
 	// controllers don't care which form the caller used.
 	async getByIdOrSlug(idOrSlug: string): Promise<Tenant> {
 		const tenant = await this.tenantRepository.findByIdOrSlug(idOrSlug);
-		if (!tenant) throw new NotFoundException(`Tenant not found: ${idOrSlug}`);
+		if (!tenant) {
+			throw new NotFoundException(`Tenant not found: ${idOrSlug}`);
+		}
 		return tenant;
 	}
 
@@ -86,7 +92,9 @@ export class TenantService {
 
 	async restore(id: string): Promise<Tenant> {
 		const existing = await this.tenantRepository.findByIdOrSlug(id);
-		if (existing) return existing;
+		if (existing) {
+			return existing;
+		}
 		return this.tenantRepository.restore(id);
 	}
 
