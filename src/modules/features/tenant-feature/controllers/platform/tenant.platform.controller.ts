@@ -28,10 +28,7 @@ import {
 import { DeleteResponseDto } from "@shared/dto/delete-response.dto";
 
 import { TenantFeatureService } from "../../services/tenant-feature.service";
-import {
-	CreateTenantRequestDto,
-	RenameTenantRequestDto,
-} from "./requests";
+import { CreateTenantRequestDto, RenameTenantRequestDto } from "./requests";
 import { TenantListResponseDto, TenantResponseDto } from "./responses";
 
 // Platform intent for tenants. Operates across the entire platform; only

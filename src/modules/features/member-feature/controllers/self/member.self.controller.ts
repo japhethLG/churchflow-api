@@ -74,7 +74,10 @@ export class MemberSelfController {
 		@Body() body: UpdateMyProfileRequestDto,
 	): Promise<MyProfileResponseDto> {
 		const memberId = this.requireMemberContext(tenant);
-		const existing = await this.memberFeatureService.getMember(tenant, memberId);
+		const existing = await this.memberFeatureService.getMember(
+			tenant,
+			memberId,
+		);
 		assertCan(ability, "update", asSubject("Member", existing));
 		return this.memberFeatureService.updateProfile(
 			user,

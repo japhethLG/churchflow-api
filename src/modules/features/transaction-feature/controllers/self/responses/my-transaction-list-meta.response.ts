@@ -7,8 +7,7 @@ export class MyTransactionListMetaDto extends MetaDto {
 	@Expose()
 	@ApiProperty({
 		example: AMOUNT_EXAMPLE,
-		description:
-			"Sum of amounts across the caller's matching transactions",
+		description: "Sum of amounts across the caller's matching transactions",
 	})
 	sum!: number;
 }

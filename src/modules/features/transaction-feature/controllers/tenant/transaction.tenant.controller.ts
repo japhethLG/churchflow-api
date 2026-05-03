@@ -1,7 +1,7 @@
 import {
+	type AppAbility,
 	asSubject,
 	assertCan,
-	type AppAbility,
 	CurrentAbility,
 } from "@infrastructure/authorization";
 import { CurrentTenant } from "@infrastructure/firebase-auth/decorators/current-tenant.decorator";
@@ -159,7 +159,11 @@ export class TransactionTenantController {
 	): Promise<DeleteResponseDto> {
 		const existing = await this.transactionFeatureService.getById(tenant, id);
 		assertCan(ability, "delete", asSubject("Transaction", existing));
-		const deleted = await this.transactionFeatureService.delete(user, tenant, id);
+		const deleted = await this.transactionFeatureService.delete(
+			user,
+			tenant,
+			id,
+		);
 		return { id: deleted.id };
 	}
 }

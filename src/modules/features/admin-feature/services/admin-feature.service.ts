@@ -4,8 +4,11 @@ import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client
 import { AuditService } from "@modules/core/audit/services/audit.service";
 import { UserService } from "@modules/core/user/services/user.service";
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { AuditAction, type MemberRole as MemberRoleEnum } from "@prisma/client";
-import { MemberRole } from "@prisma/client";
+import {
+	AuditAction,
+	MemberRole,
+	type MemberRole as MemberRoleEnum,
+} from "@prisma/client";
 import dayjs from "@shared/dayjs";
 
 // Internal query/result shapes — controllers translate their HTTP DTOs

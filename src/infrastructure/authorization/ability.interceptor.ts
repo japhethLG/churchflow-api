@@ -1,4 +1,8 @@
 import {
+	AuthUser,
+	TenantContext,
+} from "@infrastructure/firebase-auth/types/auth-user.type";
+import {
 	CallHandler,
 	ExecutionContext,
 	Injectable,
@@ -6,11 +10,6 @@ import {
 } from "@nestjs/common";
 import { Request } from "express";
 import { Observable } from "rxjs";
-
-import {
-	AuthUser,
-	TenantContext,
-} from "@infrastructure/firebase-auth/types/auth-user.type";
 
 import { AbilityFactory } from "./ability.factory";
 import { AppAbility } from "./ability.types";

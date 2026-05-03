@@ -148,7 +148,10 @@ export class MemberTenantController {
 		description:
 			"Use to render a confirmation modal. Pass the candidate to drop via ?dropId=. Admin only.",
 	})
-	@ApiParam({ name: "id", description: "Keep member id (the surviving member)" })
+	@ApiParam({
+		name: "id",
+		description: "Keep member id (the surviving member)",
+	})
 	@ApiOkResponse({ type: MergeMembersPreviewResponseDto })
 	async mergePreview(
 		@CurrentTenant() tenant: TenantContext,
@@ -170,7 +173,10 @@ export class MemberTenantController {
 		description:
 			"Reassigns transactions and pledges from the drop member to this one, copies any contact fields the keeper is missing, then soft-deletes the drop member.",
 	})
-	@ApiParam({ name: "id", description: "Keep member id (the surviving member)" })
+	@ApiParam({
+		name: "id",
+		description: "Keep member id (the surviving member)",
+	})
 	@ApiOkResponse({ type: MergeMembersResponseDto })
 	async merge(
 		@CurrentUser() user: AuthUser,

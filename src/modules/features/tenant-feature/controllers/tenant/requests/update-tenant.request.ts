@@ -6,13 +6,7 @@ import {
 	PHONE_NUMBER_EXAMPLE,
 	URL_EXAMPLE,
 } from "@shared/dto-examples";
-import {
-	IsArray,
-	IsEmail,
-	IsOptional,
-	IsString,
-	IsUrl,
-} from "class-validator";
+import { IsArray, IsEmail, IsOptional, IsString, IsUrl } from "class-validator";
 
 // Editable subset of tenant metadata. Slug renames go through the
 // platform endpoint so super-admins can manage redirect aliases.

@@ -1,7 +1,7 @@
 import {
+	type AppAbility,
 	asSubject,
 	assertCan,
-	type AppAbility,
 	CurrentAbility,
 } from "@infrastructure/authorization";
 import { CurrentTenant } from "@infrastructure/firebase-auth/decorators/current-tenant.decorator";

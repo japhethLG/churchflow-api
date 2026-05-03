@@ -30,10 +30,7 @@ import {
 } from "@nestjs/swagger";
 
 import { IssueInvitationRequestDto } from "./requests";
-import {
-	InvitationListResponseDto,
-	InvitationResponseDto,
-} from "./responses";
+import { InvitationListResponseDto, InvitationResponseDto } from "./responses";
 
 // Tenant-management intent for invitations. Admins issue, list and cancel
 // pending invitations here. Members do not see this surface — they
@@ -70,7 +67,9 @@ export class InvitationTenantController {
 	}
 
 	@Get()
-	@ApiOperation({ summary: "List pending invitations for a tenant (admin only)" })
+	@ApiOperation({
+		summary: "List pending invitations for a tenant (admin only)",
+	})
 	@ApiOkResponse({ type: InvitationListResponseDto })
 	async list(
 		@CurrentTenant() tenant: TenantContext,

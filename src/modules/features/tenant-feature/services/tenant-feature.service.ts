@@ -52,7 +52,10 @@ export class TenantFeatureService {
 		private readonly prisma: PrismaClientService,
 	) {}
 
-	async create(user: AuthUser, data: CreateTenantServiceInput): Promise<Tenant> {
+	async create(
+		user: AuthUser,
+		data: CreateTenantServiceInput,
+	): Promise<Tenant> {
 		const tenant = await this.tenantService.create({
 			...data,
 			createdBy: user.firebaseUid,

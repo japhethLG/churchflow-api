@@ -17,10 +17,7 @@ import {
 } from "@nestjs/swagger";
 
 import { AdminFeatureService } from "../../services/admin-feature.service";
-import {
-	AdminUsersQueryDto,
-	ToggleSuperAdminRequestDto,
-} from "./requests";
+import { AdminUsersQueryDto, ToggleSuperAdminRequestDto } from "./requests";
 import {
 	AdminUserDto,
 	AdminUserListResponseDto,

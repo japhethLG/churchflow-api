@@ -1,8 +1,7 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { Expose, Type } from "class-transformer";
-
-import { MyTransactionListMetaDto } from "./my-transaction-list-meta.response";
 import { MyTransactionResponseDto } from "./my-transaction.response";
+import { MyTransactionListMetaDto } from "./my-transaction-list-meta.response";
 
 export class MyTransactionListResponseDto {
 	@Expose()

@@ -5,13 +5,7 @@ import {
 	ID_EXAMPLE,
 	STRING_EXAMPLE,
 } from "@shared/dto-examples";
-import {
-	IsEnum,
-	IsNumber,
-	IsOptional,
-	IsString,
-	Min,
-} from "class-validator";
+import { IsEnum, IsNumber, IsOptional, IsString, Min } from "class-validator";
 
 // Tenant-management intent: an admin creates a pledge on behalf of a
 // specific member (memberId is required and may be any member in the

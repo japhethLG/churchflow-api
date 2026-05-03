@@ -40,7 +40,9 @@ export class TenantSelfController {
 		@CurrentTenant() tenant: TenantContext,
 		@CurrentAbility() ability: AppAbility,
 	): Promise<MyChurchResponseDto> {
-		const church = await this.tenantFeatureService.getByIdOrSlug(tenant.tenantId);
+		const church = await this.tenantFeatureService.getByIdOrSlug(
+			tenant.tenantId,
+		);
 		assertCan(ability, "read", asSubject("Tenant", church));
 		return church as unknown as MyChurchResponseDto;
 	}

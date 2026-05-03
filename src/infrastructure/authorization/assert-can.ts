@@ -1,4 +1,4 @@
-import { ForbiddenError, subject as castSubject } from "@casl/ability";
+import { subject as castSubject, ForbiddenError } from "@casl/ability";
 import { ForbiddenException } from "@nestjs/common";
 
 import { Actions, AppAbility } from "./ability.types";

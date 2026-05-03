@@ -39,7 +39,9 @@ export class CampaignSelfController {
 	) {}
 
 	@Get()
-	@ApiOperation({ summary: "List campaigns visible to the authenticated member" })
+	@ApiOperation({
+		summary: "List campaigns visible to the authenticated member",
+	})
 	@ApiOkResponse({ type: MyCampaignListResponseDto })
 	async list(
 		@CurrentTenant() tenant: TenantContext,

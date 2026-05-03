@@ -4,7 +4,9 @@ import { IsEnum, IsOptional } from "class-validator";
 
 import { CreateMemberRequestDto } from "./create-member.request";
 
-export class UpdateMemberRequestDto extends PartialType(CreateMemberRequestDto) {
+export class UpdateMemberRequestDto extends PartialType(
+	CreateMemberRequestDto,
+) {
 	@ApiPropertyOptional({ enum: MemberStatus })
 	@IsOptional()
 	@IsEnum(MemberStatus)

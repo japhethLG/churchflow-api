@@ -1,8 +1,7 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { Expose, Type } from "class-transformer";
-
-import { PledgeListMetaDto } from "./pledge-list-meta.response";
 import { PledgeResponseDto } from "./pledge.response";
+import { PledgeListMetaDto } from "./pledge-list-meta.response";
 
 export class PledgeListResponseDto {
 	@Expose()
