@@ -4,7 +4,8 @@ import { CampaignItemCoreModule } from "@modules/core/campaign-item/campaign-ite
 import { TenantCoreModule } from "@modules/core/tenant/tenant.module";
 import { Module } from "@nestjs/common";
 
-import { CampaignController } from "./controllers/campaign.controller";
+import { CampaignSelfController } from "./controllers/self";
+import { CampaignTenantController } from "./controllers/tenant";
 import { CampaignFeatureService } from "./services/campaign-feature.service";
 
 @Module({
@@ -14,7 +15,7 @@ import { CampaignFeatureService } from "./services/campaign-feature.service";
 		TenantCoreModule,
 		AuditCoreModule,
 	],
-	controllers: [CampaignController],
+	controllers: [CampaignTenantController, CampaignSelfController],
 	providers: [CampaignFeatureService],
 })
 export class CampaignFeatureModule {}

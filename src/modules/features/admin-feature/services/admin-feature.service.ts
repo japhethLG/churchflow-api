@@ -4,18 +4,57 @@ import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client
 import { AuditService } from "@modules/core/audit/services/audit.service";
 import { UserService } from "@modules/core/user/services/user.service";
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { AuditAction, MemberRole } from "@prisma/client";
+import { AuditAction, type MemberRole as MemberRoleEnum } from "@prisma/client";
+import { MemberRole } from "@prisma/client";
 import dayjs from "@shared/dayjs";
-import {
-	AdminUsersQueryDto,
-	ToggleSuperAdminRequestDto,
-} from "../dto/admin.request.dto";
-import {
-	AdminUserDto,
-	AdminUserListResponseDto,
-	AdminUserMembershipDto,
-	PlatformStatsDto,
-} from "../dto/admin.response.dto";
+
+// Internal query/result shapes — controllers translate their HTTP DTOs
+// into these so the service does not depend on controller-side classes.
+export interface AdminUsersQueryInput {
+	search?: string;
+	tenantId?: string;
+	superAdminOnly?: boolean;
+	skip?: number;
+	take?: number;
+}
+
+export interface ToggleSuperAdminInput {
+	isSuperAdmin: boolean;
+}
+
+export interface PlatformStats {
+	totalTenants: number;
+	createdThisMonth: number;
+	superAdmins: number;
+	totalAdmins: number;
+	totalMembers: number;
+	newMembersThisMonth: number;
+	giftsLast30dCount: number;
+	giftsLast30dTotal: number;
+}
+
+export interface AdminUserMembership {
+	tenantId: string;
+	tenantSlug: string;
+	tenantName: string;
+	memberId: string;
+	role: MemberRoleEnum;
+}
+
+export interface AdminUser {
+	id: string;
+	email: string;
+	displayName: string;
+	photoUrl: string | null;
+	isSuperAdmin: boolean;
+	memberships: AdminUserMembership[];
+	createdAt: Date;
+}
+
+export interface AdminUserListResult {
+	items: AdminUser[];
+	total: number;
+}
 
 @Injectable()
 export class AdminFeatureService {
@@ -26,7 +65,7 @@ export class AdminFeatureService {
 		private readonly auditService: AuditService,
 	) {}
 
-	async getPlatformStats(): Promise<PlatformStatsDto> {
+	async getPlatformStats(): Promise<PlatformStats> {
 		const monthStart = dayjs().startOf("month").toDate();
 		const last30d = dayjs().subtract(30, "day").toDate();
 
@@ -80,9 +119,7 @@ export class AdminFeatureService {
 		};
 	}
 
-	async listUsers(
-		query: AdminUsersQueryDto,
-	): Promise<AdminUserListResponseDto> {
+	async listUsers(query: AdminUsersQueryInput): Promise<AdminUserListResult> {
 		const take = query.take ?? 50;
 		const skip = query.skip ?? 0;
 
@@ -121,7 +158,7 @@ export class AdminFeatureService {
 			this.prisma.user.count({ where }),
 		]);
 
-		const items: AdminUserDto[] = users.map((u) => ({
+		const items: AdminUser[] = users.map((u) => ({
 			id: u.id,
 			email: u.email,
 			displayName: u.displayName,
@@ -129,7 +166,7 @@ export class AdminFeatureService {
 			isSuperAdmin: u.isSuperAdmin,
 			createdAt: u.createdAt,
 			memberships: u.memberships.map(
-				(m): AdminUserMembershipDto => ({
+				(m): AdminUserMembership => ({
 					tenantId: m.tenant.id,
 					tenantSlug: m.tenant.slug,
 					tenantName: m.tenant.name,
@@ -145,8 +182,8 @@ export class AdminFeatureService {
 	async toggleSuperAdmin(
 		actor: AuthUser,
 		userId: string,
-		data: ToggleSuperAdminRequestDto,
-	): Promise<AdminUserDto> {
+		data: ToggleSuperAdminInput,
+	): Promise<AdminUser> {
 		if (actor.firebaseUid) {
 			const actorUser = await this.userService.findByFirebaseUid(
 				actor.firebaseUid,
@@ -187,7 +224,7 @@ export class AdminFeatureService {
 			isSuperAdmin: user.isSuperAdmin,
 			createdAt: user.createdAt,
 			memberships: members.map(
-				(m): AdminUserMembershipDto => ({
+				(m): AdminUserMembership => ({
 					tenantId: m.tenant.id,
 					tenantSlug: m.tenant.slug,
 					tenantName: m.tenant.name,

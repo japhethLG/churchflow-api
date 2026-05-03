@@ -5,7 +5,8 @@ import { MemberCoreModule } from "@modules/core/member/member.module";
 import { PledgeCoreModule } from "@modules/core/pledge/pledge.module";
 import { Module } from "@nestjs/common";
 
-import { PledgeController } from "./controllers/pledge.controller";
+import { PledgeSelfController } from "./controllers/self";
+import { PledgeTenantController } from "./controllers/tenant";
 import { PledgeFeatureService } from "./services/pledge-feature.service";
 
 @Module({
@@ -16,7 +17,7 @@ import { PledgeFeatureService } from "./services/pledge-feature.service";
 		MemberCoreModule,
 		AuditCoreModule,
 	],
-	controllers: [PledgeController],
+	controllers: [PledgeTenantController, PledgeSelfController],
 	providers: [PledgeFeatureService],
 })
 export class PledgeFeatureModule {}

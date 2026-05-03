@@ -7,7 +7,8 @@ import { TenantCoreModule } from "@modules/core/tenant/tenant.module";
 import { TransactionCoreModule } from "@modules/core/transaction/transaction.module";
 import { Module } from "@nestjs/common";
 
-import { TransactionController } from "./controllers/transaction.controller";
+import { TransactionSelfController } from "./controllers/self";
+import { TransactionTenantController } from "./controllers/tenant";
 import { TransactionFeatureService } from "./services/transaction-feature.service";
 
 @Module({
@@ -20,7 +21,7 @@ import { TransactionFeatureService } from "./services/transaction-feature.servic
 		PledgeCoreModule,
 		AuditCoreModule,
 	],
-	controllers: [TransactionController],
+	controllers: [TransactionTenantController, TransactionSelfController],
 	providers: [TransactionFeatureService],
 })
 export class TransactionFeatureModule {}

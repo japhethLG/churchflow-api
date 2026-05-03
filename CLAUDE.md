@@ -162,11 +162,19 @@ src/
 │   ├── config/interceptors/
 │   │   └── global-response.interceptor.ts
 │   ├── prisma-client/      # PrismaClientService (extends PrismaClient, uses PrismaPg adapter)
-│   └── firebase-auth/      # FirebaseAdminService, guards, decorators
-│       ├── decorators/     # @Public, @Roles, @CurrentUser
-│       ├── guards/         # FirebaseAuthGuard (global), RolesGuard (global)
-│       ├── strategies/     # (reserved for future Passport strategies, currently empty)
-│       └── types/          # AuthUser
+│   ├── firebase-auth/      # FirebaseAdminService, guards, decorators
+│   │   ├── decorators/     # @Public, @Roles, @CurrentUser, @CurrentTenant
+│   │   ├── guards/         # FirebaseAuthGuard (global), RolesGuard (global), TenantGuard
+│   │   ├── strategies/     # (reserved for future Passport strategies, currently empty)
+│   │   └── types/          # AuthUser, TenantContext, TenantRole
+│   └── authorization/      # CASL-based authorization
+│       ├── ability.factory.ts          # createForTenant — single source of role-to-ability rules
+│       ├── ability.types.ts            # AppAbility, AppSubjects, Actions
+│       ├── ability.interceptor.ts      # Global APP_INTERCEPTOR — builds req.ability
+│       ├── assert-can.ts               # assertCan(ability, action, subject) helper
+│       ├── current-ability.decorator.ts # @CurrentAbility() injects request-scoped AppAbility
+│       ├── policy.guard.ts             # @CheckPolicy() for class-level coarse checks
+│       └── authorization.module.ts
 │
 ├── shared/                 # cross-module building blocks (response DTOs live here)
 │   ├── dto-examples.ts     # @ApiProperty example constants — SINGLE source of truth
@@ -203,18 +211,33 @@ src/
     │       └── invitation-processing.module.ts   # exports the Service only
     │
     └── features/           # Layer 3
-        ├── auth-feature/
+        ├── auth-feature/                     # exempt from intent split (see §6.5)
         │   ├── controllers/auth.controller.ts
         │   ├── services/auth-feature.service.ts
         │   ├── dto/
-        │   │   ├── *.request.dto.ts        # input shapes (validators + @ApiProperty)
-        │   │   └── *.response.dto.ts       # output shapes (extend shared)
         │   └── auth-feature.module.ts
-        ├── tenant-feature/
-        ├── campaign-feature/     # nested items under /campaigns/:id/items
-        ├── pledge-feature/
-        ├── transaction-feature/  # validates campaign/item/pledge attribution
-        └── invitation-feature/
+        ├── tenant-feature/                   # follows the intent-split convention:
+        │   ├── controllers/
+        │   │   ├── platform/                 # /platform/tenants/* (super-admin)
+        │   │   │   ├── requests/
+        │   │   │   │   ├── create-tenant.request.ts
+        │   │   │   │   └── index.ts          # barrel
+        │   │   │   ├── responses/
+        │   │   │   │   ├── tenant.response.ts
+        │   │   │   │   └── index.ts
+        │   │   │   ├── decorators/
+        │   │   │   │   └── index.ts
+        │   │   │   ├── tenant.platform.controller.ts
+        │   │   │   └── index.ts              # re-exports the controller class
+        │   │   ├── tenant/                   # /tenants/:tenantId/* (admin)
+        │   │   └── self/                     # /tenants/:tenantId/me/church (member)
+        │   ├── services/tenant-feature.service.ts   # unified, no role branches
+        │   └── tenant-feature.module.ts
+        ├── campaign-feature/                 # tenant + self intents
+        ├── pledge-feature/                   # tenant + self intents
+        ├── transaction-feature/              # tenant + self intents
+        ├── invitation-feature/               # tenant + public intents (lookup/accept)
+        └── admin-feature/                    # platform intent only
 ```
 
 ---
@@ -309,48 +332,125 @@ modules/processes/<name>-processing/
 
 ### 6.3 Feature module (`src/modules/features/<name>-feature/`)
 
-**Purpose:** HTTP-facing workflow. This is where controllers live, where
-requests are validated, and where multiple core/process services are
-orchestrated.
+**Purpose:** HTTP-facing workflow. Controllers, request validation, and
+orchestration of core/process services.
 
-**Required files:**
+**Required files (intent-split):**
 
 ```
 modules/features/<name>-feature/
-├── controllers/<name>.controller.ts
+├── controllers/
+│   ├── platform/                  # super-admin platform routes (when applicable)
+│   │   ├── requests/
+│   │   │   ├── <verb>-<entity>.request.ts   # one class per file
+│   │   │   └── index.ts                      # barrel
+│   │   ├── responses/
+│   │   │   ├── <entity>.response.ts          # one class per file
+│   │   │   └── index.ts
+│   │   ├── decorators/
+│   │   │   └── index.ts                      # placeholder when empty
+│   │   ├── <entity>.platform.controller.ts
+│   │   └── index.ts
+│   ├── tenant/                    # admin tenant-management routes
+│   ├── self/                      # member self-service routes
+│   └── public/                    # unauthenticated / token-based (when applicable)
 ├── services/<name>-feature.service.ts
-├── dto/
-│   ├── <name>.request.dto.ts           # request DTOs (one file, multiple classes OK)
-│   └── <name>.response.dto.ts          # response DTOs
 └── <name>-feature.module.ts
 ```
+
+**Intent split — non-negotiable.** Controllers are organized by *intent*,
+not by role. The URL prefix declares scope; CASL enforces authorization:
+
+- `platform/` → `/platform/*` — super-admin only (no tenant context)
+- `tenant/` → `/tenants/:tenantId/*` — admin tenant-management
+- `self/` → `/tenants/:tenantId/me/*` — member self-service (any role)
+- `public/` → `/<resource>/*` — token-based, no caller identity required
 
 **Rules:**
 
 1. **Controller**
-   - `@ApiTags('<plural-noun>')` — grouping in Scalar.
-   - `@ApiBearerAuth('Bearer')` on the class when ALL handlers need auth.
-     If only some do, apply per-handler.
-   - `@Controller('<resource>')` — the `/api/v1` prefix is applied globally.
-   - Every handler has `@ApiOperation({ summary })` and a response decorator
-     (`@ApiOkResponse`, `@ApiCreatedResponse`, `@ApiNoContentResponse`) with
-     a concrete `type`.
-   - Path params get `@ApiParam({ name })`.
-   - Handlers are thin — delegate to the feature service.
-   - Use `@CurrentUser()` to inject the authenticated user, `@Roles(...)` to
-     gate access, `@Public()` to opt out of auth entirely.
+   - One `<entity>.<intent>.controller.ts` per intent folder.
+   - `@ApiTags('<plural-noun> (<intent>)')` — `e.g. "pledges (tenant)"`.
+   - `@ApiBearerAuth('Bearer')` per intent (omit on `public/` lookup-style
+     endpoints; keep on authenticated public endpoints like accept).
+   - Every handler injects `@CurrentAbility() ability: AppAbility` and calls
+     `assertCan(ability, action, subject)` — for class-level access (string
+     subject) or row-level access (`asSubject('Foo', resource)`).
+   - `tenant/` and `self/` controllers apply `@UseGuards(TenantGuard)` and
+     declare `@ApiParam({ name: 'tenantId' })` plus `@Controller('tenants/:tenantId/...')`.
+   - `platform/` controllers apply `@Roles('SUPER_ADMIN')` as defense-in-depth
+     before the CASL check.
+   - Self controllers force `memberId` from `tenant.memberId` — request DTOs
+     do not even accept `memberId`. If `tenant.memberId` is undefined, throw
+     `NotFoundException` (super-admin without a Member row).
+   - Path params get `@ApiParam({ name })`. Handlers are thin — delegate to
+     the unified feature service.
+   - Each `requests/`, `responses/`, `decorators/` folder ships a barrel
+     `index.ts`. One class per file inside.
+
 2. **Feature service**
-   - Orchestrates core/process services.
-   - Handles cross-cutting authorization that needs more context than
-     `@Roles` alone (e.g., "user can only see their own transactions").
-   - Maps feature DTOs → core input interfaces (spread `...body` + add fields).
+   - **Unified — no per-intent split.** Authorization happens at the
+     controller boundary via CASL; the service trusts pre-authorized inputs.
+   - **No role branching.** Anywhere you'd write `if (tenant.role === ...)`,
+     stop — that's a controller responsibility now.
+   - Defines internal `<Verb><Entity>ServiceInput` interfaces. Controllers
+     translate their HTTP DTOs into these.
+   - Orchestrates core/process services, validates business invariants,
+     records audit entries.
    - NEVER imports another feature service.
+
 3. **Feature module**
    - Imports the core/process modules it depends on.
-   - Declares controllers + the feature service.
-   - Does **not** export anything — features are leaves.
-   - Module class name is `<Name>FeatureModule`. File name is
-     `<name>-feature.module.ts`.
+   - Declares all per-intent controllers + the unified feature service.
+   - Does **not** export anything.
+   - Class name `<Name>FeatureModule`, file `<name>-feature.module.ts`.
+
+### 6.5 Auth feature is exempt
+
+`auth-feature/` does **not** follow the intent-split convention. Auth
+endpoints (`/auth/session`, `/auth/me`, `/auth/sign-out-everywhere`,
+`/auth/switch-tenant`) are orthogonal to tenant/role and have multi-step
+flows wrapped in the frontend's `auth/actions.ts`. Keep the legacy
+`controllers/auth.controller.ts` + `dto/` shape there.
+
+### 6.6 Authorization — CASL is the only source of truth
+
+Every authorization decision flows through one place:
+[`src/infrastructure/authorization/ability.factory.ts`](src/infrastructure/authorization/ability.factory.ts).
+That file is the **single registry** for "who can do what." Edit it (and
+only it) when granting or revoking a capability.
+
+The pipeline:
+
+1. `FirebaseAuthGuard` (global) populates `req.user`.
+2. `RolesGuard` enforces `@Roles('SUPER_ADMIN')` on platform routes.
+3. `TenantGuard` resolves `:tenantId`, validates membership, populates
+   `req.tenant: TenantContext`.
+4. `AbilityInterceptor` (global) builds `req.ability: AppAbility` from
+   `tenant` (if present) or from `user.isSuperAdmin` (platform routes).
+5. Controllers inject `@CurrentAbility()` and call
+   `assertCan(ability, action, subject)` to enforce the rule.
+
+**Adding capabilities to a new entity:**
+
+1. Add the Prisma model to `AppSubjects` in
+   [`ability.types.ts`](src/infrastructure/authorization/ability.types.ts).
+2. Register rules per role in
+   [`ability.factory.ts`](src/infrastructure/authorization/ability.factory.ts) —
+   USER rules MUST carry a Prisma where-condition pinning the resource to
+   `tenant.memberId` (or other identity field).
+3. In the entity's controllers, `assertCan(ability, "<action>",
+   asSubject("<Entity>", row))` for resource-level checks, or
+   `assertCan(ability, "<action>", "<Entity>")` for class-level checks.
+
+**Anti-patterns:**
+
+- ❌ Reading `tenant.role` outside `ability.factory.ts`.
+- ❌ Adding `@TenantRoles('ADMIN')` decorators on intent-split controllers
+  — the URL path + CASL covers it.
+- ❌ Per-role helper methods in services (`ensureMemberVisibility`,
+  `assertAdminOrSuperAdmin`, etc.) — these belong in the ability factory.
+- ❌ Duplicating ability rules — there is exactly one `createForTenant`.
 
 ### 6.4 Main module (`src/main.module.ts`)
 
@@ -513,12 +613,19 @@ Every handler **must** declare a response type via one of the response
 decorators. If the handler returns nothing, use `@ApiNoContentResponse()` +
 `@HttpCode(204)`.
 
-### 7.7 File naming
+### 7.7 File naming (intent-split features)
 
-- Requests: `<noun>.request.dto.ts` (can contain multiple classes per endpoint).
-- Responses: `<noun>.response.dto.ts`.
-- When a feature has multiple resources, use one file per resource
-  (`tenant.request.dto.ts`, `member.request.dto.ts`).
+- One **class per file**. No multi-class files inside intent folders.
+- Requests: `<verb>-<entity>.request.ts` (e.g. `create-pledge.request.ts`).
+  The class name still ends in `Dto` (e.g. `CreatePledgeRequestDto`).
+- Responses: `<entity>.response.ts` or `<entity>-<variant>.response.ts`
+  (e.g. `pledge-list.response.ts`, `transaction-summary.response.ts`).
+- Self-intent DTOs use the `My...` prefix to distinguish them from the
+  tenant-intent counterparts (`MyPledgeResponseDto`, `MyPledgeFiltersRequestDto`).
+- Each `requests/`, `responses/`, `decorators/` folder ships an
+  `index.ts` barrel re-exporting every class.
+- Auth feature is exempt — keep its legacy `dto/<noun>.request.dto.ts`
+  shape.
 
 ---
 
@@ -657,15 +764,22 @@ the three variables `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`,
 1. Create the folder skeleton:
    ```
    src/modules/features/<name>-feature/
-   ├── controllers/<name>.controller.ts
-   ├── services/<name>-feature.service.ts
-   ├── dto/<name>.request.dto.ts
-   ├── dto/<name>.response.dto.ts
+   ├── controllers/
+   │   ├── platform/                  # if super-admin endpoints exist
+   │   ├── tenant/                    # if admin tenant-management endpoints exist
+   │   ├── self/                      # if member-facing endpoints exist
+   │   └── public/                    # if unauthenticated/token endpoints exist
+   ├── services/<name>-feature.service.ts   # unified, no per-intent split
    └── <name>-feature.module.ts
    ```
-2. In the feature module, import the core/process modules it depends on,
-   declare the controller, provide the service, and do NOT export anything.
-3. Register in `main.module.ts`'s `featureModules` array.
+   Each intent folder must contain `requests/`, `responses/`, `decorators/`
+   (with `index.ts` barrels) and `<entity>.<intent>.controller.ts`.
+2. Add new entity rules to `ability.factory.ts` (and add the subject to
+   `ability.types.ts` if it's a new Prisma model).
+3. In the feature module, import the core/process modules it depends on,
+   declare every per-intent controller, provide the unified service, and do
+   NOT export anything.
+4. Register in `main.module.ts`'s `featureModules` array.
 
 ### 10.4 Add a new process module
 
@@ -702,7 +816,11 @@ the three variables `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`,
 | Prisma types (`Prisma.XxxWhereInput`) outside a repository | Move to the repository, expose a plain interface |
 | Controller calls `prismaService.xxx` directly | Route through core service → repository |
 | Handler without `@ApiOperation` or response decorator | Add them — OpenAPI contract is incomplete otherwise |
-| Feature service without `@Roles` on admin-only endpoints | Add `@Roles('ADMIN')` or `@Roles('SUPER_ADMIN')` |
+| Reading `tenant.role` outside `ability.factory.ts` | Use `assertCan(ability, action, subject)` instead |
+| Per-role helpers in services (`ensureMemberVisibility`, `assertAdminOrSuperAdmin`) | Move the rule into `ability.factory.ts`; controllers call `assertCan` |
+| `@TenantRoles` decorators on intent-split controllers | The URL path + CASL covers it — drop the decorator |
+| Putting an admin-management endpoint under `controllers/self/` (or vice versa) | Intent declares scope; pick the folder that matches the *URL meaning*, not the caller's role |
+| Self-controller request DTO accepts `memberId` | Self DTOs MUST omit it; `memberId` comes from `tenant.memberId` |
 | Read query without `deletedAt: null` filter | Add the filter |
 | Tenant-scoped endpoint that doesn't filter by `tenantId` | Add the filter — this is a security bug |
 | Trusting `campaignId`/`campaignItemId` from the client when `pledgeId` is also set | Always resolve via the pledge; reject mismatches (see `TransactionFeatureService.resolveAttribution`) |
@@ -726,10 +844,13 @@ the three variables `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`,
   - Process module exports the service only.
   - Feature module exports nothing.
   - Infrastructure module exports the client(s) other layers need.
-- HTTP routes: REST, lowercased plural resource names (`/tenants`,
-  `/transactions`), tenant-scoped as `/tenants/:tenantId/<sub>`.
+- HTTP routes (intent-split): REST, lowercased plural resource names.
+  - Platform: `/platform/<resource>` (super-admin)
+  - Tenant: `/tenants/:tenantId/<resource>` (admin tenant-management)
+  - Self: `/tenants/:tenantId/me/<resource>` (member self-service)
+  - Public: `/<resource>/...` (no caller identity required)
 - Global prefix `/api`, URI versioning default `v1` → final paths look
-  like `/api/v1/tenants/:tenantId/transactions`.
+  like `/api/v1/tenants/:tenantId/me/pledges`.
 - Bearer token: `Authorization: Bearer <Firebase ID token>`.
 
 ---

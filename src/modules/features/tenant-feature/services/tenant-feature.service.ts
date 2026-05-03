@@ -6,15 +6,43 @@ import { Injectable } from "@nestjs/common";
 import { AuditAction, MemberRole, type Tenant } from "@prisma/client";
 import dayjs from "@shared/dayjs";
 
-import {
-	CreateTenantRequestDto,
-	RenameTenantRequestDto,
-	UpdateTenantRequestDto,
-} from "../dto/tenant.request.dto";
-import {
-	TenantAdminPreviewDto,
-	TenantListItemDto,
-} from "../dto/tenant.response.dto";
+// Internal DTOs — controllers translate their HTTP shapes into these.
+export interface CreateTenantServiceInput {
+	slug: string;
+	name: string;
+	address?: string;
+	phone?: string;
+	email?: string;
+	logoUrl?: string;
+	customTransactionTypes?: string[];
+}
+
+export interface UpdateTenantServiceInput {
+	name?: string;
+	address?: string;
+	phone?: string;
+	email?: string;
+	logoUrl?: string;
+	customTransactionTypes?: string[];
+}
+
+export interface RenameTenantServiceInput {
+	slug: string;
+}
+
+export interface TenantAdminPreview {
+	memberId: string;
+	displayName: string;
+	photoUrl: string | null;
+}
+
+export interface TenantListItem extends Tenant {
+	adminCount: number;
+	memberCount: number;
+	adminsPreview: TenantAdminPreview[];
+	giftsMtdCount: number;
+	giftsMtdTotal: number;
+}
 
 @Injectable()
 export class TenantFeatureService {
@@ -24,7 +52,7 @@ export class TenantFeatureService {
 		private readonly prisma: PrismaClientService,
 	) {}
 
-	async create(user: AuthUser, data: CreateTenantRequestDto): Promise<Tenant> {
+	async create(user: AuthUser, data: CreateTenantServiceInput): Promise<Tenant> {
 		const tenant = await this.tenantService.create({
 			...data,
 			createdBy: user.firebaseUid,
@@ -41,7 +69,7 @@ export class TenantFeatureService {
 		return tenant;
 	}
 
-	async list(): Promise<TenantListItemDto[]> {
+	async list(): Promise<TenantListItem[]> {
 		// Include soft-deleted so super-admin can see and restore archived tenants.
 		const tenants = await this.prisma.tenant.findMany({
 			orderBy: { createdAt: "desc" },
@@ -49,7 +77,7 @@ export class TenantFeatureService {
 		return Promise.all(tenants.map((t) => this.enrichTenant(t)));
 	}
 
-	private async enrichTenant(tenant: Tenant): Promise<TenantListItemDto> {
+	private async enrichTenant(tenant: Tenant): Promise<TenantListItem> {
 		const monthStart = dayjs().startOf("month").toDate();
 
 		const [adminCount, memberCount, adminsRaw, giftsMtd] = await Promise.all([
@@ -76,7 +104,7 @@ export class TenantFeatureService {
 			}),
 		]);
 
-		const adminsPreview: TenantAdminPreviewDto[] = adminsRaw.map((m) => ({
+		const adminsPreview: TenantAdminPreview[] = adminsRaw.map((m) => ({
 			memberId: m.id,
 			displayName: m.user?.displayName ?? `${m.firstName} ${m.lastName}`,
 			photoUrl: m.user?.photoUrl ?? null,
@@ -99,7 +127,7 @@ export class TenantFeatureService {
 	async update(
 		user: AuthUser,
 		id: string,
-		data: UpdateTenantRequestDto,
+		data: UpdateTenantServiceInput,
 	): Promise<Tenant> {
 		const tenant = await this.tenantService.update(id, data);
 		await this.auditService.record({
@@ -117,7 +145,7 @@ export class TenantFeatureService {
 	async rename(
 		user: AuthUser,
 		id: string,
-		data: RenameTenantRequestDto,
+		data: RenameTenantServiceInput,
 	): Promise<Tenant> {
 		const before = await this.tenantService.getById(id);
 		const tenant = await this.tenantService.rename(id, data.slug);

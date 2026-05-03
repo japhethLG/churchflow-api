@@ -8,21 +8,68 @@ import { CampaignListResult } from "@modules/core/campaign/repository/campaign.r
 import { CampaignService } from "@modules/core/campaign/services/campaign.service";
 import { CampaignItemService } from "@modules/core/campaign-item/services/campaign-item.service";
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { AuditAction, type Campaign, type CampaignItem } from "@prisma/client";
+import {
+	AuditAction,
+	type Campaign,
+	type CampaignItem,
+	type CampaignStatus,
+} from "@prisma/client";
 
-import {
-	CreateCampaignItemRequestDto,
-	CreateCampaignRequestDto,
-	UpdateCampaignItemRequestDto,
-	UpdateCampaignRequestDto,
-} from "../dto/campaign.request.dto";
-import {
-	CampaignItemProgressDto,
-	CampaignProgressResponseDto,
-} from "../dto/campaign.response.dto";
+// Internal create input — controllers translate their HTTP DTOs into this
+// shape after authorization has passed.
+export interface CreateCampaignServiceInput {
+	title: string;
+	description?: string;
+	deadline?: Date;
+	status?: CampaignStatus;
+}
+
+export interface UpdateCampaignServiceInput {
+	title?: string;
+	description?: string;
+	deadline?: Date;
+	status?: CampaignStatus;
+}
+
+export interface CreateCampaignItemServiceInput {
+	title: string;
+	description?: string;
+	targetAmount: number;
+	deadline?: Date;
+	sortOrder?: number;
+}
+
+export interface UpdateCampaignItemServiceInput {
+	title?: string;
+	description?: string;
+	targetAmount?: number;
+	deadline?: Date;
+	sortOrder?: number;
+}
 
 export interface CampaignWithItems extends Campaign {
 	items: CampaignItem[];
+}
+
+// Per-item progress aggregate — used by the progress endpoint of both
+// intents. Lives here as a plain interface because controllers map it
+// straight into their per-intent response shape.
+export interface CampaignItemProgress {
+	itemId: string;
+	title: string;
+	targetAmount: number;
+	pledgedAmount: number;
+	raisedAmount: number;
+	pledgeCount: number;
+}
+
+export interface CampaignProgress {
+	campaignId: string;
+	goalAmount: number;
+	pledgedAmount: number;
+	raisedAmount: number;
+	pledgeCount: number;
+	items: CampaignItemProgress[];
 }
 
 @Injectable()
@@ -36,7 +83,7 @@ export class CampaignFeatureService {
 	async create(
 		user: AuthUser,
 		tenant: TenantContext,
-		data: CreateCampaignRequestDto,
+		data: CreateCampaignServiceInput,
 	): Promise<Campaign> {
 		const campaign = await this.campaignService.create({
 			...data,
@@ -74,7 +121,7 @@ export class CampaignFeatureService {
 		user: AuthUser,
 		tenant: TenantContext,
 		id: string,
-		data: UpdateCampaignRequestDto,
+		data: UpdateCampaignServiceInput,
 	): Promise<Campaign> {
 		const campaign = await this.campaignService.update(
 			tenant.tenantId,
@@ -130,7 +177,7 @@ export class CampaignFeatureService {
 	async addItem(
 		tenant: TenantContext,
 		campaignId: string,
-		data: CreateCampaignItemRequestDto,
+		data: CreateCampaignItemServiceInput,
 	): Promise<CampaignItem> {
 		await this.campaignService.getById(tenant.tenantId, campaignId);
 		return this.campaignItemService.create({
@@ -144,7 +191,7 @@ export class CampaignFeatureService {
 		tenant: TenantContext,
 		campaignId: string,
 		itemId: string,
-		data: UpdateCampaignItemRequestDto,
+		data: UpdateCampaignItemServiceInput,
 	): Promise<CampaignItem> {
 		const item = await this.campaignItemService.getById(
 			tenant.tenantId,
@@ -172,12 +219,11 @@ export class CampaignFeatureService {
 	}
 
 	// Per-campaign progress summary: goal (sum of items), pledged totals,
-	// raised totals (transactions), and a per-item breakdown. Used by the
-	// admin campaign-detail view and the member pledge-flow.
+	// raised totals (transactions), and a per-item breakdown.
 	async progress(
 		tenant: TenantContext,
 		campaignId: string,
-	): Promise<CampaignProgressResponseDto> {
+	): Promise<CampaignProgress> {
 		const { items } = await this.getById(tenant, campaignId);
 		const aggregates = await this.campaignService.getProgress(
 			tenant.tenantId,
@@ -191,7 +237,7 @@ export class CampaignFeatureService {
 			aggregates.byItemTransactions.map((r) => [r.itemId, r]),
 		);
 
-		const itemProgress: CampaignItemProgressDto[] = items.map((item) => ({
+		const itemProgress: CampaignItemProgress[] = items.map((item) => ({
 			itemId: item.id,
 			title: item.title,
 			targetAmount: Number(item.targetAmount),

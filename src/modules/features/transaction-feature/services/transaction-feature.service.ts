@@ -13,20 +13,45 @@ import {
 } from "@modules/core/transaction/repository/transaction.repository";
 import { TransactionService } from "@modules/core/transaction/services/transaction.service";
 import { TransactionFilters } from "@modules/core/transaction/transaction.types";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import {
-	BadRequestException,
-	ForbiddenException,
-	Injectable,
-} from "@nestjs/common";
-import { AuditAction, type Transaction } from "@prisma/client";
+	AuditAction,
+	type Transaction,
+	type TransactionType,
+} from "@prisma/client";
 import dayjs from "@shared/dayjs";
 
-import {
-	CreateTransactionRequestDto,
-	TransactionFiltersRequestDto,
-	UpdateTransactionRequestDto,
-} from "../dto/transaction.request.dto";
+// Internal create input — controllers translate their HTTP DTOs into this
+// shape after authorization has passed.
+export interface RecordTransactionServiceInput {
+	type: TransactionType;
+	amount: number;
+	date: Date;
+	memberId?: string;
+	campaignId?: string;
+	campaignItemId?: string;
+	pledgeId?: string;
+	customType?: string;
+	note?: string;
+	referenceNumber?: string;
+}
 
+export interface UpdateTransactionServiceInput {
+	type?: TransactionType;
+	amount?: number;
+	date?: Date;
+	memberId?: string;
+	campaignId?: string;
+	campaignItemId?: string;
+	pledgeId?: string;
+	customType?: string;
+	note?: string;
+	referenceNumber?: string;
+}
+
+// Unified transaction feature service. Authorization (role gating, member
+// ownership) is the controller's responsibility — see the tenant and self
+// controllers. The service focuses on attribution validation and audit.
 @Injectable()
 export class TransactionFeatureService {
 	constructor(
@@ -41,7 +66,7 @@ export class TransactionFeatureService {
 	async record(
 		user: AuthUser,
 		tenant: TenantContext,
-		data: CreateTransactionRequestDto,
+		data: RecordTransactionServiceInput,
 	): Promise<Transaction> {
 		if (data.memberId) {
 			await this.memberService.getById(tenant.tenantId, data.memberId);
@@ -69,34 +94,20 @@ export class TransactionFeatureService {
 
 	async list(
 		tenant: TenantContext,
-		filters: TransactionFiltersRequestDto,
+		filters: TransactionFilters,
 	): Promise<TransactionListResult> {
-		const effective: TransactionFilters = { ...filters };
-		this.ensureMemberVisibility(tenant, effective);
-		return this.transactionService.getAll(tenant.tenantId, effective);
+		return this.transactionService.getAll(tenant.tenantId, filters);
 	}
 
 	async getById(tenant: TenantContext, id: string): Promise<Transaction> {
-		const tx = await this.transactionService.getById(tenant.tenantId, id);
-
-		if (
-			tenant.role === "USER" &&
-			tx.memberId &&
-			tx.memberId !== tenant.memberId
-		) {
-			throw new ForbiddenException(
-				"Cannot access another member’s transaction",
-			);
-		}
-
-		return tx;
+		return this.transactionService.getById(tenant.tenantId, id);
 	}
 
 	async update(
 		user: AuthUser,
 		tenant: TenantContext,
 		id: string,
-		data: UpdateTransactionRequestDto,
+		data: UpdateTransactionServiceInput,
 	): Promise<Transaction> {
 		const resolved = await this.resolveAttribution(tenant.tenantId, data);
 		const tx = await this.transactionService.update(tenant.tenantId, id, {
@@ -215,17 +226,5 @@ export class TransactionFeatureService {
 			campaignId: data.campaignId,
 			campaignItemId: data.campaignItemId,
 		};
-	}
-
-	// Regular members can only see their own transactions. Admins (and
-	// super-admins, who have no tenant role) see everything.
-	private ensureMemberVisibility(
-		tenant: TenantContext,
-		filters: TransactionFilters,
-	): void {
-		if (!tenant.role) return; // super-admin passing through
-		if (tenant.role === "ADMIN") return;
-		// USER — force memberId scope.
-		filters.memberId = tenant.memberId;
 	}
 }

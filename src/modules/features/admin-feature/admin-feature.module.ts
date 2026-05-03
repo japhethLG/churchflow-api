@@ -3,12 +3,12 @@ import { AuditCoreModule } from "@modules/core/audit/audit.module";
 import { UserCoreModule } from "@modules/core/user/user.module";
 import { Module } from "@nestjs/common";
 
-import { AdminController } from "./controllers/admin.controller";
+import { AdminPlatformController } from "./controllers/platform";
 import { AdminFeatureService } from "./services/admin-feature.service";
 
 @Module({
 	imports: [PrismaClientModule, UserCoreModule, AuditCoreModule],
-	controllers: [AdminController],
+	controllers: [AdminPlatformController],
 	providers: [AdminFeatureService],
 })
 export class AdminFeatureModule {}

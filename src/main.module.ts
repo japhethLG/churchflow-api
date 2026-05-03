@@ -1,3 +1,4 @@
+import { AuthorizationModule } from "@infrastructure/authorization";
 import { EmailModule } from "@infrastructure/email/email.module";
 import { FirebaseAuthModule } from "@infrastructure/firebase-auth/firebase-auth.module";
 import { FirebaseAuthGuard } from "@infrastructure/firebase-auth/guards/firebase-auth.guard";
@@ -32,6 +33,7 @@ const infrastructureModules = [
 	PrismaClientModule,
 	FirebaseAuthModule,
 	EmailModule,
+	AuthorizationModule,
 ];
 
 const coreModules = [

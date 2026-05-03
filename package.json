@@ -21,6 +21,8 @@
 		"prepare": "husky"
 	},
 	"dependencies": {
+		"@casl/ability": "^6.8.1",
+		"@casl/prisma": "^1.6.2",
 		"@nestjs/cache-manager": "^3.0.0",
 		"@nestjs/common": "^11.0.0",
 		"@nestjs/config": "^4.0.0",

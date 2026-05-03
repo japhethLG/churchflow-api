@@ -9,18 +9,35 @@ import { MemberService } from "@modules/core/member/services/member.service";
 import { PledgeFilters } from "@modules/core/pledge/pledge.types";
 import { PledgeListResult } from "@modules/core/pledge/repository/pledge.repository";
 import { PledgeService } from "@modules/core/pledge/services/pledge.service";
-import {
-	BadRequestException,
-	ForbiddenException,
-	Injectable,
-} from "@nestjs/common";
-import { AuditAction, type Pledge } from "@prisma/client";
+import { BadRequestException, Injectable } from "@nestjs/common";
+import { AuditAction, type Pledge, type PledgeStatus } from "@prisma/client";
 
-import {
-	CreatePledgeRequestDto,
-	UpdatePledgeRequestDto,
-} from "../dto/pledge.request.dto";
+// Internal create input. Authorization (member ownership, role gating) is
+// the controller's responsibility — by the time data reaches the service,
+// it has already been validated against the caller's CASL ability and the
+// effective memberId is final.
+export interface CreatePledgeServiceInput {
+	campaignId: string;
+	campaignItemId?: string;
+	memberId: string;
+	pledgedAmount: number;
+	status?: PledgeStatus;
+	note?: string;
+}
 
+// Update input — campaignId / campaignItemId / memberId are immutable
+// after create, so the service does not accept them.
+export interface UpdatePledgeServiceInput {
+	pledgedAmount?: number;
+	status?: PledgeStatus;
+	note?: string;
+}
+
+// Unified pledge feature service. There is no per-intent (admin / self)
+// branching here — authorization happens at the controller boundary via
+// CASL. The service trusts that its inputs reflect a permitted operation
+// and focuses on the business logic: validating attribution, calling core
+// services, recording audit entries.
 @Injectable()
 export class PledgeFeatureService {
 	constructor(
@@ -34,17 +51,10 @@ export class PledgeFeatureService {
 	async create(
 		user: AuthUser,
 		tenant: TenantContext,
-		data: CreatePledgeRequestDto,
+		data: CreatePledgeServiceInput,
 	): Promise<Pledge> {
-		// Members can only pledge on their own behalf; admins can pledge for
-		// any member in the tenant.
-		const effectiveMemberId = this.resolveMemberIdForCreate(
-			tenant,
-			data.memberId,
-		);
-
 		await this.campaignService.getById(tenant.tenantId, data.campaignId);
-		await this.memberService.getById(tenant.tenantId, effectiveMemberId);
+		await this.memberService.getById(tenant.tenantId, data.memberId);
 
 		if (data.campaignItemId) {
 			const item = await this.campaignItemService.getById(
@@ -60,7 +70,6 @@ export class PledgeFeatureService {
 
 		const pledge = await this.pledgeService.create({
 			...data,
-			memberId: effectiveMemberId,
 			tenantId: tenant.tenantId,
 			createdBy: user.firebaseUid,
 		});
@@ -80,40 +89,20 @@ export class PledgeFeatureService {
 		tenant: TenantContext,
 		filters: PledgeFilters,
 	): Promise<PledgeListResult> {
-		const effective: PledgeFilters = { ...filters };
-		this.ensureMemberVisibility(tenant, effective);
-		return this.pledgeService.getAll(tenant.tenantId, effective);
+		return this.pledgeService.getAll(tenant.tenantId, filters);
 	}
 
 	async getById(tenant: TenantContext, id: string): Promise<Pledge> {
-		const pledge = await this.pledgeService.getById(tenant.tenantId, id);
-		if (tenant.role === "USER" && pledge.memberId !== tenant.memberId) {
-			throw new ForbiddenException("Cannot access another member’s pledge");
-		}
-		return pledge;
+		return this.pledgeService.getById(tenant.tenantId, id);
 	}
 
 	async update(
 		user: AuthUser,
 		tenant: TenantContext,
 		id: string,
-		data: UpdatePledgeRequestDto,
+		data: UpdatePledgeServiceInput,
 	): Promise<Pledge> {
-		// Members can edit the note/status/amount on their own pledge; admins
-		// can edit anyone's. The feature service enforces — the core update
-		// method stays unaware of roles.
-		const existing = await this.pledgeService.getById(tenant.tenantId, id);
-		if (tenant.role === "USER" && existing.memberId !== tenant.memberId) {
-			throw new ForbiddenException("Cannot edit another member’s pledge");
-		}
-
-		// campaignId / campaignItemId / memberId are immutable after create.
-		const { pledgedAmount, status, note } = data;
-		const pledge = await this.pledgeService.update(tenant.tenantId, id, {
-			pledgedAmount,
-			status,
-			note,
-		});
+		const pledge = await this.pledgeService.update(tenant.tenantId, id, data);
 		await this.auditService.record({
 			tenantId: tenant.tenantId,
 			actorUid: user.firebaseUid,
@@ -121,7 +110,7 @@ export class PledgeFeatureService {
 			action: AuditAction.UPDATE,
 			entity: "Pledge",
 			entityId: pledge.id,
-			diff: { after: { pledgedAmount, status, note } },
+			diff: { after: data },
 		});
 		return pledge;
 	}
@@ -141,31 +130,5 @@ export class PledgeFeatureService {
 			entityId: pledge.id,
 		});
 		return pledge;
-	}
-
-	private resolveMemberIdForCreate(
-		tenant: TenantContext,
-		requested: string,
-	): string {
-		if (!tenant.role) {
-			// Super-admin creating a pledge — they must supply memberId
-			// explicitly (they don't have a member row themselves).
-			return requested;
-		}
-		if (tenant.role === "ADMIN") return requested;
-		// USER — ignore whatever they sent and force their own memberId.
-		if (!tenant.memberId) {
-			throw new ForbiddenException("Member context not resolved");
-		}
-		return tenant.memberId;
-	}
-
-	private ensureMemberVisibility(
-		tenant: TenantContext,
-		filters: PledgeFilters,
-	): void {
-		if (!tenant.role) return; // super-admin
-		if (tenant.role === "ADMIN") return;
-		filters.memberId = tenant.memberId;
 	}
 }
