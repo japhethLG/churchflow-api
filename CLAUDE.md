@@ -53,9 +53,12 @@ for that app.
 | Database | PostgreSQL | — |
 | ORM | Prisma **7** | multi-file schema under [prisma/schema/](prisma/schema/) |
 | Prisma adapter | `@prisma/adapter-pg` | Prisma 7 requires `adapter` or `accelerateUrl` on the client |
-| Auth | **Firebase Admin SDK** | ID-token verification only — no other Firebase services |
+| Auth | **Firebase Admin SDK** | ID-token verification + custom claims only — no other Firebase services |
+| Authorization | **CASL** (`@casl/ability` + `@casl/prisma`) | Single source of truth in [`ability.factory.ts`](src/infrastructure/authorization/ability.factory.ts) |
+| Email | `nodemailer` (Gmail / Resend / console) | Auto-selected at boot from env vars — see [`infrastructure/email/`](src/infrastructure/email/) |
 | API docs | `@nestjs/swagger` + `@scalar/nestjs-api-reference` | Scalar UI at `/api-docs`, raw OpenAPI JSON at `/api-docs-json` |
-| Validation | `class-validator` + `class-transformer` | global `ValidationPipe` with `whitelist: true, forbidNonWhitelisted: true, transform: true` |
+| Validation | `class-validator` + `class-transformer` | global `ValidationPipe` with `whitelist: true, forbidNonWhitelisted: true, transform: true, enableImplicitConversion: true` |
+| Lint / format | Biome 2 | `npm run lint` / `npm run format` / `npm run check` |
 
 ### Path aliases (both in `tsconfig.json` and `.swcrc`)
 
@@ -76,7 +79,10 @@ npm install                    # first-time install
 cp .env.example .env           # fill in DATABASE_URL + Firebase creds
 npm run prisma:generate        # regenerate Prisma client (run after schema edits)
 npm run prisma:migrate         # create + apply dev migration
+npm run prisma:deploy          # apply migrations in CI/prod (no schema diff)
 npm run prisma:studio          # GUI DB browser
+npm run prisma:seed            # tsx prisma/seed.ts
+npm run seed:super-admin       # promote a user to SUPER_ADMIN (scripts/seed-super-admin.ts)
 npm run start:dev              # SWC watch mode on :8000
 npm run build                  # production build via SWC
 npm run lint                   # biome lint .
@@ -150,36 +156,50 @@ prisma/schema/              # Prisma 7 multi-file schema (auto-merged at build)
 ├── campaign.prisma         # Campaign + CampaignItem + CampaignStatus
 ├── pledge.prisma           # Pledge + PledgeStatus
 ├── transaction.prisma      # Transaction + TransactionType + PaymentMethod
-└── invitation.prisma       # Invitation + InvitationStatus
+├── invitation.prisma       # Invitation + InvitationStatus
+└── audit.prisma            # AuditEvent + AuditAction (append-only audit log)
 
 src/
-├── main.ts                 # bootstrap — prefix /api, version v1, Scalar docs, ValidationPipe
+├── main.ts                 # bootstrap — /api prefix, URI version v1, CORS (exposes
+│                           #   X-Claims-Refreshed), ValidationPipe, ClaimsRefreshInterceptor
+│                           #   + GlobalResponseInterceptor as global interceptors, Scalar docs
 ├── main.module.ts          # wires every layer + global APP_GUARDs
 ├── main.controller.ts      # /health
 ├── swagger.config.ts       # setupSwagger(app) — Scalar + /api-docs-json
 │
 ├── infrastructure/         # Layer 0
 │   ├── config/interceptors/
-│   │   └── global-response.interceptor.ts
+│   │   ├── global-response.interceptor.ts    # wraps responses in { success, data }
+│   │   └── claims-refresh.interceptor.ts     # sets X-Claims-Refreshed: 1 (see §9.5)
 │   ├── prisma-client/      # PrismaClientService (extends PrismaClient, uses PrismaPg adapter)
-│   ├── firebase-auth/      # FirebaseAdminService, guards, decorators
-│   │   ├── decorators/     # @Public, @Roles, @CurrentUser, @CurrentTenant
-│   │   ├── guards/         # FirebaseAuthGuard (global), RolesGuard (global), TenantGuard
-│   │   ├── strategies/     # (reserved for future Passport strategies, currently empty)
-│   │   └── types/          # AuthUser, TenantContext, TenantRole
-│   └── authorization/      # CASL-based authorization
-│       ├── ability.factory.ts          # createForTenant — single source of role-to-ability rules
-│       ├── ability.types.ts            # AppAbility, AppSubjects, Actions
-│       ├── ability.interceptor.ts      # Global APP_INTERCEPTOR — builds req.ability
-│       ├── assert-can.ts               # assertCan(ability, action, subject) helper
-│       ├── current-ability.decorator.ts # @CurrentAbility() injects request-scoped AppAbility
-│       ├── policy.guard.ts             # @CheckPolicy() for class-level coarse checks
-│       └── authorization.module.ts
+│   ├── firebase-auth/      # FirebaseAdminService + guards + decorators
+│   │   ├── firebase-admin.service.ts
+│   │   ├── user-claims.service.ts            # writes tenantMemberships+isSuperAdmin claims
+│   │   ├── decorators/                       # @Public, @Roles, @TenantRoles,
+│   │   │                                     #   @CurrentUser, @CurrentTenant, @RefreshesClaims
+│   │   ├── guards/                           # FirebaseAuthGuard (global APP_GUARD),
+│   │   │                                     #   RolesGuard (global APP_GUARD), TenantGuard
+│   │   └── types/auth-user.type.ts           # AuthUser, TenantContext, TenantMembershipClaim
+│   ├── authorization/      # CASL-based authorization
+│   │   ├── ability.factory.ts                # createForTenant — single source of role→ability rules
+│   │   ├── ability.types.ts                  # AppAbility, AppSubjects, Actions
+│   │   ├── ability.interceptor.ts            # global APP_INTERCEPTOR — builds req.ability
+│   │   ├── assert-can.ts                     # assertCan, asSubject helpers
+│   │   ├── current-ability.decorator.ts      # @CurrentAbility() param decorator
+│   │   ├── policy.guard.ts                   # @CheckPolicy() for class-level coarse checks
+│   │   ├── authorization.module.ts           # @Global, exports AbilityFactory + PolicyGuard
+│   │   └── index.ts                          # barrel
+│   └── email/              # @Global EmailModule
+│       ├── email.interface.ts                # IEmailProvider + EMAIL_PROVIDER token
+│       ├── console.provider.ts               # default — logs to stdout
+│       ├── gmail.provider.ts                 # picked when GMAIL_APP_PASSWORD is set
+│       ├── resend.provider.ts                # picked when RESEND_API_KEY is set
+│       └── email.module.ts
 │
 ├── shared/                 # cross-module building blocks (response DTOs live here)
 │   ├── dto-examples.ts     # @ApiProperty example constants — SINGLE source of truth
-│   └── dto/
-│       ├── user.dto.ts     # ONE response DTO per Prisma entity
+│   └── dto/                # ONE response DTO per Prisma entity
+│       ├── user.dto.ts
 │       ├── tenant.dto.ts
 │       ├── member.dto.ts
 │       ├── campaign.dto.ts
@@ -193,51 +213,63 @@ src/
 └── modules/
     ├── core/               # Layer 1 — one folder per Prisma entity
     │   ├── user/
-    │   │   ├── user.types.ts           # INTERNAL input interfaces (not classes)
+    │   │   ├── user.types.ts                 # INTERNAL input interfaces (not classes)
     │   │   ├── repository/user.repository.ts
     │   │   ├── services/user.service.ts
-    │   │   └── user.module.ts          # exports only the Service
-    │   ├── tenant/    …
-    │   ├── member/    …
-    │   ├── campaign/      …
-    │   ├── campaign-item/ …
-    │   ├── pledge/        …
-    │   ├── transaction/   …
-    │   └── invitation/    …
+    │   │   └── user.module.ts                # exports only the Service
+    │   ├── tenant/
+    │   ├── member/
+    │   ├── campaign/
+    │   ├── campaign-item/
+    │   ├── pledge/
+    │   ├── transaction/
+    │   ├── invitation/
+    │   └── audit/                            # AuditEvent — append-only, written by features
     │
-    ├── processes/          # Layer 2
-    │   └── invitation-processing/
-    │       ├── services/invitation-processing.service.ts
-    │       └── invitation-processing.module.ts   # exports the Service only
+    ├── processes/          # Layer 2 — multi-step orchestration, no controllers
+    │   ├── invitation-processing/
+    │   │   ├── services/invitation-processing.service.ts
+    │   │   └── invitation-processing.module.ts
+    │   └── member-merging/                   # admin-driven member dedup flow
+    │       ├── services/member-merging.service.ts
+    │       └── member-merging.module.ts
     │
     └── features/           # Layer 3
         ├── auth-feature/                     # exempt from intent split (see §6.5)
         │   ├── controllers/auth.controller.ts
         │   ├── services/auth-feature.service.ts
-        │   ├── dto/
+        │   ├── dto/                          # legacy flat dto/ folder
         │   └── auth-feature.module.ts
-        ├── tenant-feature/                   # follows the intent-split convention:
+        ├── admin-feature/                    # platform intent only (super-admin tooling)
+        │   ├── controllers/platform/
+        │   │   ├── requests/                 # one class per file + index.ts barrel
+        │   │   ├── responses/
+        │   │   ├── decorators/
+        │   │   ├── admin.platform.controller.ts
+        │   │   └── index.ts
+        │   ├── services/admin-feature.service.ts
+        │   └── admin-feature.module.ts
+        ├── tenant-feature/                   # platform + tenant + self intents
         │   ├── controllers/
-        │   │   ├── platform/                 # /platform/tenants/* (super-admin)
+        │   │   ├── platform/                 # /platform/tenants/*  (super-admin)
         │   │   │   ├── requests/
         │   │   │   │   ├── create-tenant.request.ts
-        │   │   │   │   └── index.ts          # barrel
+        │   │   │   │   └── index.ts
         │   │   │   ├── responses/
         │   │   │   │   ├── tenant.response.ts
         │   │   │   │   └── index.ts
-        │   │   │   ├── decorators/
-        │   │   │   │   └── index.ts
+        │   │   │   ├── decorators/index.ts
         │   │   │   ├── tenant.platform.controller.ts
-        │   │   │   └── index.ts              # re-exports the controller class
+        │   │   │   └── index.ts
         │   │   ├── tenant/                   # /tenants/:tenantId/* (admin)
         │   │   └── self/                     # /tenants/:tenantId/me/church (member)
         │   ├── services/tenant-feature.service.ts   # unified, no role branches
         │   └── tenant-feature.module.ts
+        ├── member-feature/                   # tenant + self intents
         ├── campaign-feature/                 # tenant + self intents
         ├── pledge-feature/                   # tenant + self intents
         ├── transaction-feature/              # tenant + self intents
-        ├── invitation-feature/               # tenant + public intents (lookup/accept)
-        └── admin-feature/                    # platform intent only
+        └── invitation-feature/               # tenant + public intents (token lookup/accept)
 ```
 
 ---
@@ -408,10 +440,10 @@ not by role. The URL prefix declares scope; CASL enforces authorization:
 ### 6.5 Auth feature is exempt
 
 `auth-feature/` does **not** follow the intent-split convention. Auth
-endpoints (`/auth/session`, `/auth/me`, `/auth/sign-out-everywhere`,
-`/auth/switch-tenant`) are orthogonal to tenant/role and have multi-step
-flows wrapped in the frontend's `auth/actions.ts`. Keep the legacy
-`controllers/auth.controller.ts` + `dto/` shape there.
+endpoints (`/auth/session`, `/auth/me`, `/auth/sign-out-everywhere`) are
+orthogonal to tenant/role and have multi-step flows wrapped in the
+frontend's `auth/actions.ts`. Keep the legacy `controllers/auth.controller.ts`
++ `dto/` shape there.
 
 ### 6.6 Authorization — CASL is the only source of truth
 
@@ -454,14 +486,21 @@ The pipeline:
 
 ### 6.4 Main module (`src/main.module.ts`)
 
-- Imports `ConfigModule` (global), all infra modules, all core modules, all
-  process modules, all feature modules.
+- Imports `ConfigModule` (global), all infra modules
+  (`PrismaClientModule`, `FirebaseAuthModule`, `EmailModule`,
+  `AuthorizationModule`), all core modules, all process modules, all
+  feature modules.
 - Registers global `APP_GUARD`s in this order:
   1. `FirebaseAuthGuard` — verifies the bearer token (skipped on `@Public()`).
-  2. `RolesGuard` — enforces `@Roles(...)` metadata.
-- Registers `GlobalResponseInterceptor` (wraps responses in `{ success: true, data }`).
-- Bootstrap file `main.ts` sets the `/api` prefix, URI versioning (`v1`
-  default), CORS, the validation pipe, and calls `setupSwagger(app)`.
+  2. `RolesGuard` — enforces `@Roles('SUPER_ADMIN')` metadata.
+- `AbilityInterceptor` is registered as `APP_INTERCEPTOR` inside
+  `AuthorizationModule` (not in MainModule) to keep authorization wiring
+  colocated.
+- Bootstrap file [`main.ts`](src/main.ts) sets the `/api` prefix, URI
+  versioning (`v1` default), CORS (with `X-Claims-Refreshed` exposed),
+  the validation pipe, registers `ClaimsRefreshInterceptor` +
+  `GlobalResponseInterceptor` as global interceptors, and calls
+  `setupSwagger(app)`.
 
 ---
 
@@ -678,59 +717,116 @@ churches.
 **We use Firebase for authentication only** (ID token verification + custom
 claims). No Firestore, no FCM, no Storage.
 
-### 9.1 Flow
+### 9.1 Flow — there is no "active tenant" claim
+
+The active tenant is **derived from the URL** (`/tenants/:tenantId/...`),
+never stored in custom claims. There is no `switch-tenant` endpoint. A
+Firebase user carries a snapshot of every tenant they belong to via the
+`tenantMemberships` claim, keyed by tenant slug. `TenantGuard` resolves
+the URL's `:tenantId` (UUID **or** slug) and produces the per-request
+`TenantContext`.
 
 1. Frontend does Google SSO via Firebase client SDK → gets an ID token.
 2. Frontend calls `POST /api/v1/auth/session` with `{ idToken }`.
-3. `AuthController.createSession` (marked `@Public()`) verifies the token,
-   upserts a `User`, and returns the session.
-4. Frontend stores the ID token and sends it as `Authorization: Bearer <idToken>`
-   on subsequent requests.
+3. `AuthController.createSession` (`@Public()`) verifies the token,
+   upserts the global `User`, snapshots every tenant membership into
+   custom claims via `UserClaimsService.refreshFor`, and returns the
+   populated session.
+4. Frontend sends `Authorization: Bearer <idToken>` on subsequent requests.
 5. `FirebaseAuthGuard` (global `APP_GUARD`) verifies the token on every
    non-`@Public()` request and attaches `AuthUser` to `req.user`.
-6. When the user picks which tenant to operate in, frontend calls
-   `POST /api/v1/auth/switch-tenant`, which sets custom claims
-   (`tenantId`, `memberId`, `role`, `isSuperAdmin`) on the Firebase user. The
-   next token refresh includes these claims.
+6. Routes under `/tenants/:tenantId/...` apply `@UseGuards(TenantGuard)`.
+   `TenantGuard` (a) resolves `:tenantId` (UUID or slug) → real tenant,
+   (b) checks `user.tenantMemberships[tenant.slug]` (or `isSuperAdmin`),
+   (c) optionally enforces `@TenantRoles('ADMIN')`, (d) writes
+   `req.tenant: TenantContext`.
+7. Whenever a handler that **changes the caller's own claims** runs (e.g.
+   `POST /platform/users/:id` toggling super-admin on themselves, accepting
+   an invitation, claiming a pre-created member), it should be marked
+   `@RefreshesClaims()`. The `ClaimsRefreshInterceptor` then sets
+   `X-Claims-Refreshed: 1` on the response. The frontend reacts by
+   force-refreshing the ID token and re-minting the Next session cookie —
+   no manual `refreshSession()` call required.
 
 ### 9.2 Decorators on controllers
 
 ```ts
-@Public()                   // skip auth entirely (login, health, public pages)
-@Roles('ADMIN')             // require tenant admin
-@Roles('SUPER_ADMIN')       // require super admin
-@Roles('ADMIN', 'SUPER_ADMIN') // either works
-@CurrentUser() user: AuthUser  // param decorator — injects the auth user
+@Public()                       // skip auth entirely (login, health, /invitations/lookup)
+@Roles('SUPER_ADMIN')           // platform-level role (RolesGuard, global APP_GUARD)
+@TenantRoles('ADMIN')           // tenant-scoped role (TenantGuard, requires @UseGuards(TenantGuard))
+@RefreshesClaims()              // sets X-Claims-Refreshed: 1 on success (see §9.1 step 7)
+@CurrentUser() user: AuthUser   // param decorator — full auth user
+@CurrentTenant() tenant: TenantContext  // param decorator — only on @UseGuards(TenantGuard) routes
+@CurrentAbility() ability: AppAbility   // param decorator — see §6.6
 ```
 
-`AuthUser` shape:
+`AuthUser` and `TenantContext` shapes (from
+[`auth-user.type.ts`](src/infrastructure/firebase-auth/types/auth-user.type.ts)):
 
 ```ts
+type TenantRole = "ADMIN" | "USER";
+
+interface TenantMembershipClaim {
+  memberId: string;
+  role: TenantRole;
+  name: string;                                      // tenant display name
+}
+
 interface AuthUser {
   firebaseUid: string;
   email: string;
   displayName?: string;
   picture?: string;
-  tenantId?: string;      // from custom claims — set after switch-tenant
+  isSuperAdmin: boolean;
+  tenantMemberships: Record<string, TenantMembershipClaim>;  // keyed by tenant slug
+}
+
+// Built per-request by TenantGuard from req.params.tenantId + the matching
+// membership claim. memberId/role are undefined for super-admins who lack
+// a Member row in this tenant.
+interface TenantContext {
+  tenantId: string;          // always the UUID
+  slug: string;
   memberId?: string;
-  role?: 'ADMIN' | 'USER';
-  isSuperAdmin?: boolean;
+  role?: TenantRole;
 }
 ```
 
 ### 9.3 Guard order matters
 
 Registered as `APP_GUARD` in this order in `main.module.ts`:
-1. `FirebaseAuthGuard` — populates `req.user` (or throws 401).
-2. `RolesGuard` — reads `@Roles()` metadata, checks `req.user.role`.
+1. `FirebaseAuthGuard` — populates `req.user` (or throws 401, unless `@Public()`).
+2. `RolesGuard` — enforces `@Roles('SUPER_ADMIN')` against `user.isSuperAdmin`.
 
-Do not reverse the order. `RolesGuard` assumes `FirebaseAuthGuard` has run.
+`TenantGuard` is opt-in via `@UseGuards(TenantGuard)` on tenant-scoped
+controllers (everything under `/tenants/:tenantId/...`). It runs after the
+two global guards.
+
+Global interceptors run in this order (from [`main.ts`](src/main.ts)):
+1. `ClaimsRefreshInterceptor` — reads `@RefreshesClaims()` metadata, sets the response header.
+2. `GlobalResponseInterceptor` — wraps every successful body in `{ success: true, data }`.
+3. `AbilityInterceptor` — registered as `APP_INTERCEPTOR` inside
+   `AuthorizationModule`. Builds `req.ability` from `req.tenant` (or from
+   `user.isSuperAdmin` on platform routes).
 
 ### 9.4 When auth is provided via env
 
 `FIREBASE_SERVICE_ACCOUNT_PATH` points to a service-account JSON, OR set
 the three variables `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`,
 `FIREBASE_PRIVATE_KEY`. See [.env.example](.env.example).
+
+### 9.5 The `X-Claims-Refreshed` contract
+
+CORS in `main.ts` whitelists `X-Claims-Refreshed` under `exposedHeaders` so
+browser JS can read it. The frontend's API response middleware sees the
+header and triggers a session-cookie remint — every handler that mutates
+the caller's own membership/role/super-admin status MUST be tagged
+`@RefreshesClaims()` so the frontend doesn't run on stale claims for up
+to an hour.
+
+Do **not** add `@RefreshesClaims()` to a handler that mutates *another*
+user's claims — those users' devices update on their own next token
+refresh.
 
 ---
 
@@ -739,16 +835,21 @@ the three variables `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`,
 ### 10.1 Add a new Prisma entity
 
 1. Create `prisma/schema/<entity>.prisma` with the model and any enums.
-2. `npx prisma migrate dev --name add-<entity>` — creates + applies the migration.
-3. Create `src/shared/dto/<entity>.dto.ts` — full response DTO mirroring
+2. `npm run prisma:migrate -- --name add-<entity>` — creates + applies the migration.
+3. `npm run prisma:generate` to refresh the typed client.
+4. Create `src/shared/dto/<entity>.dto.ts` — full response DTO mirroring
    every column, with `@Expose()` + `@ApiProperty()`. Use/add constants in
    `src/shared/dto-examples.ts`.
-4. Create the core module:
+5. Create the core module:
    - `src/modules/core/<entity>/<entity>.types.ts`
    - `src/modules/core/<entity>/repository/<entity>.repository.ts`
    - `src/modules/core/<entity>/services/<entity>.service.ts`
    - `src/modules/core/<entity>/<entity>.module.ts` (exports service only)
-5. Register the core module in `main.module.ts`'s `coreModules` array.
+6. Register the core module in `main.module.ts`'s `coreModules` array.
+7. If the entity needs authorization, add it to `AppSubjects` in
+   [`ability.types.ts`](src/infrastructure/authorization/ability.types.ts)
+   and register rules per role in
+   [`ability.factory.ts`](src/infrastructure/authorization/ability.factory.ts).
 
 ### 10.2 Add a new HTTP endpoint to an existing feature
 

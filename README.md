@@ -2,104 +2,169 @@
 
 Multi-tenant church management API. Tracks incoming financial transactions
 (tithes, offerings, mission giving, first fruit, commitments, donations) and
-lets churches run pledge-based fundraising campaigns (building funds, mission
-trips) broken into line items members can commit to individually.
+runs pledge-based fundraising campaigns (building funds, mission trips)
+broken into line items members can commit to individually.
+
+This repo is the API for the sibling Next.js frontend at `../church-app/`.
+The product spec lives in [`../church-app/SPECS.md`](../church-app/SPECS.md).
 
 ## Stack
 
-- **NestJS 11** — framework
-- **Prisma 7 + PostgreSQL** — database (multi-file schema + `@prisma/adapter-pg`)
-- **Firebase Admin** — authentication only (Google SSO from the client,
-  ID token verification on the server). No other Firebase services.
+- **NestJS 11** + **TypeScript 5.6** (SWC build via `nest-cli`)
+- **PostgreSQL** with **Prisma 7** (multi-file schema + `@prisma/adapter-pg`)
+- **Firebase Admin** for auth — ID-token verification + custom claims only
+- **CASL** (`@casl/ability` + `@casl/prisma`) for authorization, with a
+  single `ability.factory.ts` as the source of truth
+- **`@nestjs/swagger` + `@scalar/nestjs-api-reference`** for API docs
+- **`class-validator` / `class-transformer`** at the HTTP boundary
+- **`nodemailer`** with Gmail / Resend / console providers (auto-selected
+  from env vars)
+- **Biome 2** for lint + format
 
-## Architecture
+## Setup
 
-Adapted from the Griffin 5-tier architecture — dependencies only flow downward,
-never sideways within a layer.
+```bash
+# 1. Install
+npm install
+
+# 2. Configure env (DATABASE_URL + Firebase service account)
+cp .env.example .env
+
+# 3. Generate Prisma client + run migrations
+npm run prisma:generate
+npm run prisma:migrate
+
+# 4. (Optional) seed a super-admin user
+npm run seed:super-admin
+
+# 5. Start dev server
+npm run start:dev
+```
+
+API runs on `http://localhost:8000/api/v1/`.
+
+| Endpoint | Purpose |
+|---|---|
+| `http://localhost:8000/api-docs` | Scalar API reference (interactive) |
+| `http://localhost:8000/api-docs-json` | Raw OpenAPI 3.x JSON — frontend codegen reads this |
+| `http://localhost:8000/api/v1/health` | Liveness probe |
+
+The docs paths are intentionally **not** under `/api`. The frontend regenerates
+its TypeScript types via `openapi-typescript` against `/api-docs-json`.
+
+## Architecture — 5-tier (Griffin-derived)
+
+Dependencies only flow downward. Anything sideways within a layer is a
+smell.
 
 ```
-Main       → Feature, Process, Core, Infra
-Feature    → Process, Core, Infra
-Process    → Core, Infra
-Core       → Infra                  (never other Core)
-Infra      → (external adapters only)
+Main      → Feature, Process, Core, Infra
+Feature   → Process, Core, Infra
+Process   → Core, Infra
+Core      → Infra (never another Core)
+Infra     → external adapters only
 ```
 
-Each module contains a subset of `controllers/`, `services/`, `repository/`,
-`dto/` (feature only) and `*.types.ts` (core only):
+| Layer | Responsibility | Has |
+|-------|----------------|-----|
+| **Main** | Wires every module + global guards/interceptors | `main.module.ts`, `main.ts` |
+| **Feature** | HTTP-facing workflow — controllers, request/response DTOs, orchestration | controllers, services, intent-split DTOs |
+| **Process** | Reusable multi-step orchestration shared by features | services only — no controllers |
+| **Core** | Single-entity CRUD (one Prisma table per module) | service, repository, internal `*.types.ts` |
+| **Infra** | DB, Firebase, CASL, email — anything outside our database | service / module / decorators / guards |
 
-| Layer       | Controllers | Services | Repositories | Request/Response DTOs | Internal `*.types.ts` |
-|-------------|-------------|----------|--------------|-----------------------|-----------------------|
-| Feature     | ✅          | ✅       | ❌           | ✅                    | ❌                    |
-| Process     | ❌          | ✅       | ❌           | ❌                    | ❌ (use feature DTOs or inline input interfaces) |
-| Core        | ❌          | ✅       | ✅           | ❌                    | ✅                    |
-| Infrastructure | ❌       | ✅       | ❌           | ❌                    | ❌                    |
+Cross-cutting authorization rules live in **CASL**
+([`infrastructure/authorization/ability.factory.ts`](src/infrastructure/authorization/ability.factory.ts)) —
+the only place "who can do what" is decided. Controllers call
+`assertCan(ability, action, subject)` to enforce.
 
-> We intentionally skip port/interface files and domain model files from the
-> Griffin variant — services and repositories are referenced by their concrete
-> class directly.
-
-### Directory layout
+## Directory layout
 
 ```
 prisma/
-└── schema/                 # Prisma 7 multi-file schema (auto-merged)
-    ├── schema.prisma       # generator + datasource
-    ├── user.prisma
-    ├── tenant.prisma
-    ├── member.prisma       # Member + MemberRole + MemberStatus
-    ├── campaign.prisma     # Campaign + CampaignItem + CampaignStatus
-    ├── pledge.prisma       # Pledge + PledgeStatus
-    ├── transaction.prisma  # Transaction + TransactionType + PaymentMethod
-    └── invitation.prisma   # Invitation + InvitationStatus
+├── schema/                 # Prisma 7 multi-file schema (auto-merged at build)
+│   ├── schema.prisma       # generator + datasource only
+│   ├── user.prisma
+│   ├── tenant.prisma
+│   ├── member.prisma       # Member + MemberRole + MemberStatus
+│   ├── campaign.prisma     # Campaign + CampaignItem + CampaignStatus
+│   ├── pledge.prisma       # Pledge + PledgeStatus
+│   ├── transaction.prisma  # Transaction + TransactionType + PaymentMethod
+│   ├── invitation.prisma   # Invitation + InvitationStatus
+│   └── audit.prisma        # AuditEvent (append-only)
+├── migrations/
+└── seed.ts
+
+scripts/
+└── seed-super-admin.ts     # promote a user to SUPER_ADMIN
 
 src/
-├── main.ts                 # bootstrap
-├── main.module.ts          # root module — wires every layer
+├── main.ts                 # bootstrap — /api, v1, CORS, ValidationPipe, Scalar docs
+├── main.module.ts          # wires every layer + global APP_GUARDs
 ├── main.controller.ts      # /health
+│
 ├── infrastructure/
-│   ├── config/interceptors/
-│   ├── prisma-client/      # Prisma client service + module
-│   └── firebase-auth/      # Firebase Admin, guards, decorators
-├── shared/                 # cross-module building blocks
-│   ├── dto-examples.ts     # @ApiProperty example constants (single source)
-│   └── dto/                # one response DTO per Prisma entity + helpers
-│       ├── user.dto.ts
-│       ├── tenant.dto.ts
-│       ├── member.dto.ts
-│       ├── campaign.dto.ts
-│       ├── campaign-item.dto.ts
-│       ├── pledge.dto.ts
-│       ├── transaction.dto.ts
-│       ├── invitation.dto.ts
-│       ├── meta.dto.ts
-│       └── delete-response.dto.ts
+│   ├── prisma-client/      # PrismaClientService (PrismaPg adapter)
+│   ├── firebase-auth/      # FirebaseAdminService, UserClaimsService, guards, decorators
+│   ├── authorization/      # CASL — AbilityFactory, AbilityInterceptor, assertCan, etc.
+│   ├── config/interceptors/  # GlobalResponseInterceptor + ClaimsRefreshInterceptor
+│   └── email/              # IEmailProvider — console / Gmail / Resend (auto-selected)
+│
+├── shared/
+│   ├── dto-examples.ts     # @ApiProperty example constants — single source of truth
+│   └── dto/                # one response DTO per Prisma entity
+│
 └── modules/
-    ├── core/               # single-entity CRUD
-    │   ├── user/           # services/, repository/, user.types.ts
-    │   ├── tenant/
-    │   ├── member/
-    │   ├── campaign/
-    │   ├── campaign-item/
-    │   ├── pledge/
-    │   ├── transaction/
-    │   └── invitation/
-    ├── processes/          # reusable multi-step operations
-    │   └── invitation-processing/
-    └── features/           # HTTP-facing workflows
-        ├── auth-feature/   # controllers/, services/, dto/
-        ├── tenant-feature/
-        ├── campaign-feature/
-        ├── pledge-feature/
-        ├── transaction-feature/
-        └── invitation-feature/
+    ├── core/               # Layer 1 — one folder per Prisma entity
+    │   ├── user/  tenant/  member/  campaign/  campaign-item/
+    │   ├── pledge/  transaction/  invitation/  audit/
+    │   └── … each has services/, repository/, <entity>.types.ts
+    │
+    ├── processes/          # Layer 2 — reusable multi-step orchestration
+    │   ├── invitation-processing/
+    │   └── member-merging/
+    │
+    └── features/           # Layer 3 — HTTP-facing
+        ├── auth-feature/        # exempt from intent split (legacy dto/ shape)
+        ├── admin-feature/       # platform/ only (super-admin tools)
+        ├── tenant-feature/      # platform/ + tenant/ + self/
+        ├── member-feature/      # tenant/ + self/
+        ├── campaign-feature/    # tenant/ + self/
+        ├── pledge-feature/      # tenant/ + self/
+        ├── transaction-feature/ # tenant/ + self/
+        └── invitation-feature/  # tenant/ + public/  (token lookup/accept)
 ```
 
-### Domain model — campaigns, items, pledges, transactions
+### Intent-split feature folders
+
+Controllers are organized by **URL intent**, not by role. The URL prefix
+declares scope; CASL enforces authorization.
 
 ```
-Campaign (building fund, mission trip, etc.)
-│  - no stored goal — the goal is the sum of its items' targetAmount
+features/<name>-feature/
+├── controllers/
+│   ├── platform/           # /platform/<resource>  — super-admin only
+│   ├── tenant/             # /tenants/:tenantId/<resource>  — admin tenant-management
+│   ├── self/               # /tenants/:tenantId/me/<resource>  — member self-service
+│   └── public/             # /<resource>/...  — token-based / unauthenticated
+│       ├── requests/       # one request DTO class per file + index.ts barrel
+│       ├── responses/      # one response DTO class per file + index.ts barrel
+│       ├── decorators/     # placeholder when empty
+│       ├── <entity>.<intent>.controller.ts
+│       └── index.ts
+├── services/<name>-feature.service.ts   # unified, no role branches
+└── <name>-feature.module.ts
+```
+
+The feature **service is unified** — authorization happens at the
+controller boundary via `assertCan(...)`, so the service trusts
+pre-authorized inputs and never branches on role.
+
+## Domain model
+
+```
+Campaign (e.g. building fund, mission trip)
+│  - no stored goal — the goal is the SUM of its items' targetAmount
 │  - deadline optional (null = open-ended)
 │
 ├── CampaignItem (roofing, gates, …)
@@ -111,250 +176,143 @@ Campaign (building fund, mission trip, etc.)
 │     - pledgedAmount
 │
 └── Transaction (actual payment)
-      - pledgeId optional — when set, campaignId/campaignItemId must match
-      - campaignItemId optional — must belong to campaignId when set
-      - campaignId optional
+      - pledgeId optional — when set, campaignId/campaignItemId must match the pledge
+      - campaignItemId requires campaignId
+      - both optional — transactions can exist without campaign attribution
 ```
 
-Rule: when recording a `Transaction`, if `pledgeId` is given it fully
-determines `campaignId` and `campaignItemId` (the transaction feature service
-copies them and rejects caller-supplied mismatches). If only
-`campaignItemId` is set, it must belong to `campaignId`. Both are optional
-— transactions can exist without any campaign attribution.
+When recording a transaction, if `pledgeId` is set it fully determines
+`campaignId` and `campaignItemId`; the transaction feature service
+rejects caller-supplied mismatches.
 
-### Prisma multi-file schema
+## Authentication & authorization
 
-The schema lives in [prisma/schema/](prisma/schema/) — one file per
-entity/domain group. Prisma 7 merges every `*.prisma` in that folder into a
-single schema at generate/migrate time. Cross-file references (e.g. `Tenant`
-referencing `Member`) just work — no imports needed. The folder is wired via
-[prisma.config.ts](prisma.config.ts): `defineConfig({ schema: 'prisma/schema' })`.
+**Firebase for auth, CASL for authorization** — no Firestore, no FCM, no
+storage.
 
-## Setup
+The active tenant is **derived from the URL** (`/tenants/:tenantId/...`,
+where `:tenantId` accepts a UUID OR a slug), not stored on the token.
+A user's Firebase token carries:
 
-```bash
-# 1. Install deps
-npm install
-
-# 2. Copy env and fill in DATABASE_URL + Firebase service account
-cp .env.example .env
-
-# 3. Generate Prisma client
-npm run prisma:generate
-
-# 4. Run migrations
-npm run prisma:migrate
-
-# 5. Start the server
-npm run start:dev
+```ts
+interface AuthUser {
+  firebaseUid: string;
+  email: string;
+  displayName?: string;
+  picture?: string;
+  isSuperAdmin: boolean;
+  tenantMemberships: Record<string, {              // keyed by tenant slug
+    memberId: string;
+    role: "ADMIN" | "USER";
+    name: string;                                  // tenant display name
+  }>;
+}
 ```
 
-API runs on `http://localhost:8000/api/v1/`.
+### Request pipeline
 
-## API docs
+1. **`FirebaseAuthGuard`** (global `APP_GUARD`) — verifies the bearer
+   token, populates `req.user`. Bypassed on `@Public()` handlers.
+2. **`RolesGuard`** (global `APP_GUARD`) — enforces
+   `@Roles('SUPER_ADMIN')` against `user.isSuperAdmin`.
+3. **`TenantGuard`** (opt-in `@UseGuards(TenantGuard)` on
+   `/tenants/:tenantId/...` routes) — resolves the tenant (UUID or slug),
+   verifies membership (or super-admin), optionally enforces
+   `@TenantRoles('ADMIN')`, and writes `req.tenant: TenantContext`.
+4. **`AbilityInterceptor`** (global `APP_INTERCEPTOR`) — builds the
+   request-scoped `AppAbility` from `req.tenant` (or from
+   `user.isSuperAdmin` for platform routes).
+5. Controllers inject `@CurrentAbility()` and call
+   `assertCan(ability, action, subject)`.
 
-OpenAPI docs are generated from the NestJS controllers at runtime and served
-by [@scalar/nestjs-api-reference](https://github.com/scalar/scalar). Setup
-lives in [src/swagger.config.ts](src/swagger.config.ts).
+### Auth endpoints
 
-| Endpoint | Purpose |
-|---|---|
-| `http://localhost:8000/api-docs` | Interactive Scalar API reference (browse, try requests) |
-| `http://localhost:8000/api-docs-json` | Raw OpenAPI 3.x JSON — import into Postman/Insomnia, or feed to codegen |
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/auth/session` | `@Public()` — exchange ID token, snapshot memberships into custom claims |
+| `GET`  | `/auth/me` | Return the decoded `AuthUser` |
+| `POST` | `/auth/sign-out-everywhere` | Revoke every refresh token for the caller |
 
-> These paths are **not** under the `/api` global prefix. Docs are always
-> served from the root so they're easy to find.
-
-### Authenticating in the docs
-
-All non-`@Public()` routes require a Firebase ID token. In the Scalar UI:
-
-1. Click **Authentication** (top right).
-2. Choose the `Bearer` scheme.
-3. Paste a Firebase ID token (get one from your web/mobile client after
-   `signInWithPopup`, or from a test script using the Firebase client SDK).
-4. Requests will now send `Authorization: Bearer <token>` automatically.
-
-The token is persisted in your browser, so you won't need to re-enter it on
-reload. It expires after ~1 hour — grab a fresh one if requests start
-returning 401.
-
-### Tagging controllers
-
-Controllers should be tagged with `@ApiTags('...')` so they group neatly in
-the docs (e.g. `auth`, `tenants`, `transactions`, `invitations`). DTOs are
-reflected automatically from `class-validator` decorators.
+There is **no `switch-tenant`** — that endpoint was retired when the
+active tenant moved into the URL. Membership claims are refreshed on every
+sign-in by `UserClaimsService`. Mid-session, when a handler mutates the
+caller's own membership/role/super-admin state, it should be tagged
+`@RefreshesClaims()` — `ClaimsRefreshInterceptor` then sets
+`X-Claims-Refreshed: 1` on the response, which the frontend reacts to by
+forcing a token refresh and re-minting its session cookie.
 
 ## DTO conventions
 
-Because the OpenAPI spec is the contract with the frontend (types are
-generated from `/api-docs-json`), every request and response DTO needs proper
-Swagger decorators. The rules below keep DTOs **unshared across modules** —
-each feature owns its controller-level DTOs and extends a shared base rather
-than importing another feature's DTO.
+Because the OpenAPI JSON is the contract with the frontend, DTOs need
+correct decorators on every field. We split DTOs into three tiers and
+deliberately **never share controller-level DTOs across modules**:
 
-### The three DTO tiers
+| Tier | Location | Purpose | Validators? |
+|------|----------|---------|-------------|
+| **Shared base** | `src/shared/dto/<entity>.dto.ts` | One response DTO per Prisma entity | ❌ |
+| **Feature request** | `controllers/<intent>/requests/<verb>-<entity>.request.ts` | HTTP input | ✅ |
+| **Feature response** | `controllers/<intent>/responses/<entity>.response.ts` | HTTP output (usually `extends SharedDto`) | ❌ |
 
-| Tier | Location | Purpose | Decorators | Use `class-validator`? |
-|------|----------|---------|------------|------------------------|
-| **Shared base** | `src/shared/dto/<entity>.dto.ts` | One response DTO per Prisma entity — single source of truth for the entity's public shape | `@Expose()` + `@ApiProperty()` | ❌ (response-only) |
-| **Feature request** | `src/modules/features/<x>/dto/*.request.dto.ts` | Input shape for a specific endpoint | `@ApiProperty()` + `@Is*()` validators | ✅ |
-| **Feature response** | `src/modules/features/<x>/dto/*.response.dto.ts` | Output shape for a specific endpoint | Usually `extends SharedDto` via `PickType` / `OmitType`, plus any extra fields | ❌ |
+Core layer uses plain TS interfaces (`<entity>.types.ts`) as internal
+service contracts — no `class-validator` decorators below the HTTP
+boundary.
 
-The core layer uses plain TypeScript interfaces (`*.types.ts`) as internal
-service contracts — **not** classes. This keeps `class-validator` out of
-internal boundaries and prevents features from reaching into another
-feature's DTOs.
+Example shapes are pulled from
+[`src/shared/dto-examples.ts`](src/shared/dto-examples.ts) so they stay
+consistent. `Decimal` columns are transformed to `number` so JSON output
+isn't a `Prisma.Decimal` object.
 
-### Shared base DTOs
+Self-intent DTOs use a `My...` prefix
+(`MyPledgeResponseDto`, `MyPledgeFiltersRequestDto`) and **must omit
+`memberId`** — the controller forces it from `tenant.memberId`.
 
-One file per Prisma model in [src/shared/dto/](src/shared/dto/). Every field
-is annotated with `@Expose()` (so `class-transformer` emits it) and
-`@ApiProperty({ example })` (so OpenAPI schemas are accurate). Example
-constants live in [src/shared/dto-examples.ts](src/shared/dto-examples.ts) so
-examples stay consistent across the surface area.
+## Audit trail
 
-```ts
-// src/shared/dto/tenant.dto.ts
-export class TenantDto {
-  @Expose()
-  @ApiProperty({ example: ID_EXAMPLE })
-  id!: string;
+Mutating actions write an append-only `AuditEvent` row via `AuditService`.
+Each row carries `tenantId` (or null for platform-level events),
+`actorUid`, `action` (`CREATE | UPDATE | DELETE | RESTORE | ROLE_CHANGE |
+MEMBERSHIP_CHANGE`), `entity`, `entityId`, an optional summary string and
+a JSON `diff`. Feature services are responsible for shaping the diff.
 
-  @Expose()
-  @ApiProperty({ example: CHURCH_NAME_EXAMPLE })
-  name!: string;
+## Email
 
-  // ... every column on the Prisma model ...
-}
-```
+[`infrastructure/email/`](src/infrastructure/email/) exposes a single
+`IEmailProvider` token. At boot, `EmailModule` picks the provider based on
+env vars:
 
-### Feature request DTOs
+1. `GMAIL_APP_PASSWORD` set → `GmailEmailProvider`
+2. `RESEND_API_KEY` set → `ResendEmailProvider`
+3. otherwise → `ConsoleEmailProvider` (logs to stdout — for dev/tests)
 
-Per-endpoint input. Both `@ApiProperty()` (for OpenAPI) and class-validator
-decorators (for the global `ValidationPipe`). Use `PartialType` to derive
-updates from creates:
+Consumers inject `@Inject(EMAIL_PROVIDER) IEmailProvider` and call
+`send({ to, subject, html, text?, replyTo? })`.
 
-```ts
-// src/modules/features/tenant-feature/dto/tenant.request.dto.ts
-export class CreateTenantRequestDto {
-  @ApiProperty({ example: CHURCH_NAME_EXAMPLE })
-  @IsString()
-  name!: string;
+## Date handling
 
-  @ApiPropertyOptional({ example: CURRENCY_EXAMPLE })
-  @IsOptional()
-  @IsString()
-  currency?: string;
-}
+Always use **dayjs** via `@shared/dayjs` (preloaded with the UTC plugin).
+Never use `new Date()` or `Date.now()`. When persisting to a Prisma
+`DateTime` field, convert with `dayjs(val).toDate()`.
 
-export class UpdateTenantRequestDto extends PartialType(CreateTenantRequestDto) {}
-```
+## Build & lint
 
-### Feature response DTOs
-
-Extend the shared base to pick just the fields this endpoint returns. `PickType`,
-`OmitType`, and `IntersectionType` from `@nestjs/swagger` all **preserve
-Swagger metadata**:
-
-```ts
-// src/modules/features/tenant-feature/dto/tenant.response.dto.ts
-export class TenantResponseDto extends TenantDto {}
-
-// Or pick a subset:
-export class TenantSummaryResponseDto extends PickType(TenantDto, ['id', 'name', 'logoUrl'] as const) {}
-
-// List responses wrap the entity DTO with a meta block:
-export class TenantListResponseDto {
-  @Expose()
-  @Type(() => TenantResponseDto)
-  @ApiProperty({ type: [TenantResponseDto] })
-  items!: TenantResponseDto[];
-
-  @Expose()
-  @Type(() => MetaDto)
-  @ApiProperty({ type: MetaDto })
-  meta!: MetaDto;
-}
-```
-
-### Controller decorators
-
-Every handler should declare its response type so the OpenAPI schema is
-complete:
-
-```ts
-@ApiTags('tenants')
-@ApiBearerAuth('Bearer')
-@Controller('tenants')
-export class TenantController {
-  @Post()
-  @ApiOperation({ summary: 'Create a new church' })
-  @ApiCreatedResponse({ type: TenantResponseDto })
-  async create(@Body() body: CreateTenantRequestDto): Promise<TenantResponseDto> { /* ... */ }
-}
-```
-
-Decorator cheat sheet:
-
-| Decorator | When to use |
-|-----------|-------------|
-| `@ApiTags('...')` | Group routes in Swagger/Scalar |
-| `@ApiBearerAuth('Bearer')` | Mark that the route needs the bearer token |
-| `@ApiOperation({ summary, description })` | Describe the endpoint's purpose |
-| `@ApiParam({ name })` | Annotate a path param (`:id`) |
-| `@ApiBody({ type })` | Explicit request-body type (usually inferred from the `@Body()` DTO) |
-| `@ApiOkResponse({ type })` | `200` response schema |
-| `@ApiCreatedResponse({ type })` | `201` response schema |
-| `@ApiNoContentResponse()` | `204` — no body |
-
-### Why this split
-
-- **No module imports another module's DTOs.** Features extend *shared*
-  base DTOs, never each other's.
-- **One source of truth per entity.** If a Prisma column is added/renamed,
-  only the shared DTO needs updating — every feature response inherits via
-  `PickType` / extension.
-- **Clean internal boundary.** Core service/repo take plain TS interfaces
-  (`*.types.ts`) — no `class-validator` noise in the database layer, no
-  feature-layer concerns leaking downward.
-- **Accurate OpenAPI.** Because shapes are described with `@ApiProperty`
-  everywhere (including examples), `/api-docs-json` is suitable for
-  frontend codegen (`openapi-typescript`, `orval`, etc.).
-
-## Build
-
-Uses **SWC** via `nest-cli` (`"builder": "swc"`, `typeCheck: true`) — see
-[.swcrc](.swcrc) and [nest-cli.json](nest-cli.json). Build scripts pass
-`-b swc` explicitly so they're robust if `nest-cli.json` is changed.
-
-## Authentication
-
-`FirebaseAuthGuard` is registered globally via `APP_GUARD`. Every route
-requires a Firebase ID token in `Authorization: Bearer <idToken>` unless
-decorated with `@Public()`.
-
-- `@Public()` — disable auth on a handler
-- `@Roles('ADMIN' | 'USER' | 'SUPER_ADMIN')` — require role from custom claims
-- `@CurrentUser()` — inject the decoded token as `AuthUser`
-
-Custom claims are set by `POST /api/v1/auth/switch-tenant` after the user
-selects which church to operate in. The frontend must force-refresh the ID
-token after that call so subsequent requests carry the new claims.
+- **SWC** via `nest-cli` (`-b swc`, `typeCheck: true`) — see
+  [`.swcrc`](.swcrc) and [`nest-cli.json`](nest-cli.json).
+- **Biome** for lint + format — `npm run lint`, `npm run format`,
+  `npm run check`.
 
 ## Adding a new module
 
-**Core module** (new entity):
-1. Add a new `<entity>.prisma` file (or extend an existing one) under [prisma/schema/](prisma/schema/), run `npm run prisma:migrate`
-2. Create `modules/core/<name>/{dto,repository,services,<name>.module.ts}`
-3. Export the service; import the module where needed
+See [CLAUDE.md](CLAUDE.md) §10 for the full step-by-step. In short:
 
-**Feature module** (new HTTP workflow):
-1. Create `modules/features/<name>-feature/{controllers,services,dto,<name>-feature.module.ts}`
-2. Import the core/process modules it depends on (never another feature)
-3. Register in `main.module.ts`
+- **Core** (new entity): schema → migrate → shared DTO → core module
+  (`types.ts` + repository + service + module exporting the service) →
+  register in `main.module.ts` `coreModules` → add to `AppSubjects` and
+  `ability.factory.ts` if the entity needs authorization.
+- **Process** (reusable multi-step): only when more than one feature will
+  trigger it; otherwise keep the flow inside the feature service.
+- **Feature** (new HTTP workflow): create the intent-split skeleton
+  (`controllers/{platform,tenant,self,public}/{requests,responses,decorators}/`),
+  unified service, register in `main.module.ts` `featureModules`.
 
-**Process module** (reusable operation):
-1. Create `modules/processes/<name>-processing/{services,<name>-processing.module.ts}`
-2. Never include a controller; never import a feature
-3. Export the service so features can import it
+The full architectural rules, anti-patterns, and decorator cheat sheets
+live in [CLAUDE.md](CLAUDE.md). Read it before non-trivial edits.
