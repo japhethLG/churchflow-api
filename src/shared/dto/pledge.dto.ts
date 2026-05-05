@@ -67,7 +67,8 @@ export class PledgeDto {
 	)
 	@ApiProperty({
 		example: AMOUNT_EXAMPLE,
-		description: "Remaining to fulfill this pledge (pledgedAmount − paidAmount, min 0)",
+		description:
+			"Remaining to fulfill this pledge (pledgedAmount − paidAmount, min 0)",
 	})
 	remainingAmount!: number;
 

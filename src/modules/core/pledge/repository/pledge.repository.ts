@@ -99,10 +99,7 @@ export class PledgeRepository {
 			return {
 				...p,
 				paidAmount,
-				remainingAmount: Math.max(
-					0,
-					Number(p.pledgedAmount) - paidAmount,
-				),
+				remainingAmount: Math.max(0, Number(p.pledgedAmount) - paidAmount),
 			};
 		});
 
