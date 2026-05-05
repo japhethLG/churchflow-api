@@ -10,6 +10,7 @@ import {
 import {
 	PledgeListResult,
 	PledgeRepository,
+	PledgeWithAmounts,
 } from "../repository/pledge.repository";
 
 @Injectable()
@@ -20,7 +21,7 @@ export class PledgeService {
 		return this.pledgeRepository.create(data);
 	}
 
-	async getById(tenantId: string, id: string): Promise<Pledge> {
+	async getById(tenantId: string, id: string): Promise<PledgeWithAmounts> {
 		const pledge = await this.pledgeRepository.findById(tenantId, id);
 		if (!pledge) {
 			throw new NotFoundException(`Pledge not found: ${id}`);
@@ -39,9 +40,10 @@ export class PledgeService {
 		tenantId: string,
 		id: string,
 		data: UpdatePledgeInput,
-	): Promise<Pledge> {
+	): Promise<PledgeWithAmounts> {
 		await this.getById(tenantId, id);
-		return this.pledgeRepository.update(tenantId, id, data);
+		await this.pledgeRepository.update(tenantId, id, data);
+		return this.getById(tenantId, id);
 	}
 
 	async delete(tenantId: string, id: string): Promise<Pledge> {

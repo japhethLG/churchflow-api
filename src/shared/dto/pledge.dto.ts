@@ -52,6 +52,26 @@ export class PledgeDto {
 	note!: string | null;
 
 	@Expose()
+	@Transform(({ value }) =>
+		value instanceof Prisma.Decimal ? value.toNumber() : value,
+	)
+	@ApiProperty({
+		example: AMOUNT_EXAMPLE,
+		description: "Total paid against this pledge (sum of linked transactions)",
+	})
+	paidAmount!: number;
+
+	@Expose()
+	@Transform(({ value }) =>
+		value instanceof Prisma.Decimal ? value.toNumber() : value,
+	)
+	@ApiProperty({
+		example: AMOUNT_EXAMPLE,
+		description: "Remaining to fulfill this pledge (pledgedAmount − paidAmount, min 0)",
+	})
+	remainingAmount!: number;
+
+	@Expose()
 	@ApiProperty({ example: FIREBASE_UID_EXAMPLE })
 	createdBy!: string;
 
