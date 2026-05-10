@@ -3,8 +3,8 @@ import {
 	TenantContext,
 } from "@infrastructure/firebase-auth/types/auth-user.type";
 import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
-import { AuditService } from "@modules/core/audit/services/audit.service";
 import { WriteAuditEventInput } from "@modules/core/audit/audit.types";
+import { AuditService } from "@modules/core/audit/services/audit.service";
 import { CampaignService } from "@modules/core/campaign/services/campaign.service";
 import { CampaignItemService } from "@modules/core/campaign-item/services/campaign-item.service";
 import { MemberService } from "@modules/core/member/services/member.service";
