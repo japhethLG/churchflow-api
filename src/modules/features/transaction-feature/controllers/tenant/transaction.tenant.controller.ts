@@ -34,6 +34,7 @@ import { DeleteResponseDto } from "@shared/dto/delete-response.dto";
 
 import { TransactionFeatureService } from "../../services/transaction-feature.service";
 import {
+	BulkCreateTransactionsRequestDto,
 	CreateTransactionRequestDto,
 	TransactionFiltersRequestDto,
 	UpdateTransactionRequestDto,
@@ -73,6 +74,39 @@ export class TransactionTenantController {
 			tenant,
 			body,
 		) as unknown as Promise<TransactionResponseDto>;
+	}
+
+	// Static "bulk" segment must be declared before the ":id" routes below
+	// or Nest's matcher would treat "bulk" as an id.
+	@Post("bulk")
+	@ApiOperation({
+		summary: "Record many gifts in one entry (admin only, atomic)",
+		description:
+			"Validates every row up front and writes the whole batch in a single Prisma transaction. Either all gifts are recorded or none are.",
+	})
+	@ApiCreatedResponse({ type: TransactionListResponseDto })
+	async bulkCreate(
+		@CurrentUser() user: AuthUser,
+		@CurrentTenant() tenant: TenantContext,
+		@CurrentAbility() ability: AppAbility,
+		@Body() body: BulkCreateTransactionsRequestDto,
+	): Promise<TransactionListResponseDto> {
+		assertCan(ability, "create", "Transaction");
+		const items = await this.transactionFeatureService.recordMany(
+			user,
+			tenant,
+			body.items,
+		);
+		const sum = items.reduce((acc, tx) => acc + Number(tx.amount), 0);
+		return {
+			items: items as unknown as TransactionResponseDto[],
+			meta: {
+				offset: 0,
+				limit: items.length,
+				total: items.length,
+				sum,
+			},
+		};
 	}
 
 	@Get()
