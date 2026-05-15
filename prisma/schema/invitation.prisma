@@ -16,9 +16,11 @@ model Invitation {
   invitedBy  String
   expiresAt  DateTime
   acceptedAt DateTime?
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
-  deletedAt  DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+  deletedBy        String?
+  deletedByCascade Boolean   @default(false)
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 

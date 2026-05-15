@@ -17,7 +17,10 @@
 		"prisma:deploy": "prisma migrate deploy",
 		"prisma:studio": "prisma studio",
 		"prisma:seed": "tsx prisma/seed.ts",
+		"prisma:reset": "prisma migrate reset && npm run prisma:seed",
 		"seed:super-admin": "tsx scripts/seed-super-admin.ts",
+		"test:integration": "vitest run",
+		"test:integration:watch": "vitest",
 		"prepare": "husky"
 	},
 	"dependencies": {
@@ -52,6 +55,7 @@
 		"@nestjs/schematics": "^11.0.0",
 		"@swc/cli": "^0.5.2",
 		"@swc/core": "^1.15.21",
+		"@testcontainers/postgresql": "^11.14.0",
 		"@types/express": "^5.0.0",
 		"@types/node": "^22.0.0",
 		"@types/nodemailer": "^8.0.0",
@@ -61,6 +65,7 @@
 		"ts-node": "^10.9.2",
 		"tsconfig-paths": "^4.2.0",
 		"tsx": "^4.21.0",
-		"typescript": "^5.6.0"
+		"typescript": "^5.6.0",
+		"vitest": "^4.1.6"
 	}
 }

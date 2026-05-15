@@ -20,6 +20,7 @@ The product spec lives in [`../church-app/SPECS.md`](../church-app/SPECS.md).
 - **`nodemailer`** with Gmail / Resend / console providers (auto-selected
   from env vars)
 - **Biome 2** for lint + format
+- **Vitest + Testcontainers** for integration tests (real Postgres, no mocks)
 
 ## Setup
 
@@ -39,6 +40,9 @@ npm run seed:super-admin
 
 # 5. Start dev server
 npm run start:dev
+
+# 6. (Optional) run the integration suite — requires Docker
+npm run test:integration
 ```
 
 API runs on `http://localhost:8000/api/v1/`.
@@ -299,6 +303,49 @@ Never use `new Date()` or `Date.now()`. When persisting to a Prisma
   [`.swcrc`](.swcrc) and [`nest-cli.json`](nest-cli.json).
 - **Biome** for lint + format — `npm run lint`, `npm run format`,
   `npm run check`.
+
+## Testing
+
+Integration tests live in [`test/integration/`](test/integration/) and
+run against a real Postgres container spun up by **Testcontainers**.
+The same `PrismaClientService` (with the soft-delete extension wired in)
+is used end-to-end — no mocks at the database layer.
+
+```bash
+npm run test:integration         # one-shot — boots Postgres, runs migrations, runs tests
+npm run test:integration:watch   # vitest watch mode
+```
+
+First run pulls `postgres:16-alpine`; subsequent runs reuse the cached
+image and complete in ~10 seconds. Requires Docker.
+
+## Soft delete
+
+Every soft-deletable entity has `deletedAt` / `deletedBy` /
+`deletedByCascade` columns. A Prisma extension at
+[`src/infrastructure/prisma-client/soft-delete/`](src/infrastructure/prisma-client/soft-delete/)
+filters tombstones from every read by default (top-level reads, relation
+includes, `_count`, relation predicates inside `where`), blocks writes
+against tombstoned rows, and provides `softDelete` / `restore` helpers
+that cascade through composition relations (declared via
+`@relation(onDelete: Cascade)`).
+
+To opt back in to tombstones — for historical views, receipts, audit
+queries — use the `withDeleted` helper:
+
+```ts
+import { withDeleted } from "@infrastructure/prisma-client/soft-delete";
+
+const members = await prisma.member.findMany(
+  withDeleted("Member", {
+    where: { tenantId },
+    include: { pledges: { include: { campaign: true } } },
+  }),
+);
+```
+
+See [CLAUDE.md §8.3](CLAUDE.md) for the full design (Prisma constraints,
+cascade semantics, partial unique indexes for slot reclamation, etc.).
 
 ## Adding a new module
 

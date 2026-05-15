@@ -88,6 +88,8 @@ npm run build                  # production build via SWC
 npm run lint                   # biome lint .
 npm run format                 # biome format . --write
 npm run check                  # biome check --write .
+npm run test:integration       # vitest — boots a Postgres testcontainer, applies migrations
+npm run test:integration:watch # vitest watch mode
 ```
 
 Docs: <http://localhost:8000/api-docs> (Scalar UI) · <http://localhost:8000/api-docs-json> (raw OpenAPI).
@@ -694,14 +696,140 @@ build time.
 - After schema edits, run `npm run prisma:generate` to regenerate types.
 - Use `npm run prisma:migrate` in dev (creates + applies a migration).
 
-### 8.3 Soft delete
+### 8.3 Soft delete — managed by the Prisma extension at [src/infrastructure/prisma-client/soft-delete/](src/infrastructure/prisma-client/soft-delete/)
 
-Every entity has `deletedAt: DateTime?`. Read queries MUST filter
-`deletedAt: null`. Delete operations set `deletedAt: dayjs().toDate()` rather
-than hard-deleting.
+Every soft-deletable entity has three columns: `deletedAt: DateTime?`,
+`deletedBy: String?`, and `deletedByCascade: Boolean @default(false)`.
+The extension is applied to `PrismaClientService` via a proxy in
+[prisma-client.module.ts](src/infrastructure/prisma-client/prisma-client.module.ts),
+so repositories that inject `PrismaClientService` get the behavior for
+free.
 
-There is currently no Prisma extension automating this — repositories do it
-explicitly. If you add a new repository method, add the filter.
+#### What the extension does
+
+| Operation | Behavior |
+|---|---|
+| `findMany` / `findFirst` / `findFirstOrThrow` / `count` / `aggregate` / `groupBy` | Inject `deletedAt: null` into `where` so tombstones are excluded. |
+| `findUnique` / `findUniqueOrThrow` | Post-query check; widens `select`/`omit` to include `deletedAt` so a custom projection cannot fail open. |
+| `update` / `updateMany` / `updateManyAndReturn` / `upsert` / `delete` / `deleteMany` | Inject `deletedAt: null` into `where` so tombstones are immutable. |
+| `create` / `createMany` / `createManyAndReturn` | Pass through — no `where` to filter. |
+
+**Escape hatch**: include `deletedAt` explicitly in your `where` to opt
+out of the auto-filter (any value works — `deletedAt: undefined` for
+"all rows", `deletedAt: { not: null }` for "only tombstones"). This is
+the same mechanism the `restore` helper uses to reach into the tombstone
+set.
+
+**Relations are filtered too — industry-standard behavior matching
+Laravel/Rails/Django.** A single walker recurses through `include` /
+`select` / `where` / `_count` and injects `deletedAt: null` at every
+relation that targets a soft-deletable model:
+
+- To-many (`include: { items: true }`) → only active items returned.
+- Optional to-one (`include: { member: true }`) → field is `null` if
+  the related row is archived.
+- Required to-one (`include: { campaign: true }` on `Pledge`) → Prisma
+  generates `XxxDefaultArgs` which has no `where` field, so the
+  extension can't honestly filter it without lying about non-null
+  types. Tombstones surface here; callers must inspect
+  `joined.campaign.deletedAt` if it matters. This is a Prisma
+  constraint, not a design choice.
+- Relation predicates in top-level `where` — including inside
+  `AND`/`OR`/`NOT` and the to-many `some`/`every`/`none` operators —
+  get the same auto-filter. `where: { member: { firstName: "John" } }`
+  matches only active Johns.
+- `_count` (both `_count: true` shorthand and the object form
+  `_count: { select: { items: true } }`) → counts only active rows.
+  The walker expands the shorthand to the object form server-side so
+  both surfaces agree.
+
+#### `withDeleted(modelName, args)` — opt-in to tombstones
+
+The Laravel/Rails-style escape hatch. Pre-seeds `deletedAt: undefined`
+through the entire query tree so a single wrapper bypasses the
+auto-filter at every level:
+
+```ts
+import { withDeleted } from "@infrastructure/prisma-client/soft-delete";
+
+// Includes archived members AND archived pledges AND archived campaigns
+const members = await prisma.member.findMany(
+  withDeleted("Member", {
+    where: { tenantId },
+    include: { pledges: { include: { campaign: true } } },
+  }),
+);
+```
+
+For surgical opt-out, callers can also include `deletedAt` manually in
+any single where (top-level or nested). `withDeleted` is just sugar
+that does it for the whole tree.
+
+`withDeleted` **throws** if `modelName` doesn't match a model in the
+Prisma schema. This catches typos like `withDeleted("Memer", ...)` that
+would otherwise silently no-op and leak tombstones into a query the
+caller thought was opted out.
+
+#### The `softDelete` / `restore` helpers
+
+```ts
+import { softDelete, restore } from "@infrastructure/prisma-client/soft-delete";
+
+// Soft-delete + cascade into composition children (`@relation(onDelete: Cascade)`)
+await prisma.$transaction(async (tx) => {
+  await softDelete(tx, "Campaign", { where: { id, tenantId }, actorId: user.firebaseUid });
+});
+
+// Restore + cascade restore for children that were cascade-deleted by THIS parent
+await prisma.$transaction(async (tx) => {
+  await restore(tx, "Campaign", { where: { id, tenantId } });
+});
+```
+
+Cascade discovery reads `@relation(..., onDelete: Cascade)` declarations
+directly from the `.prisma` schema files at startup (Prisma 7 strips
+`relationOnDelete` from runtime DMMF). Composition relations cascade;
+association relations don't. The `deletedByCascade` flag distinguishes
+"cascaded by this parent" from "independently deleted" so `restore`
+doesn't resurrect rows the admin had intentionally archived earlier.
+
+#### Deployment requirement
+
+The extension reads `prisma/schema/*.prisma` at first use. The schema
+directory must be present at runtime in production. If your Docker
+image strips non-`src/` files, set `SOFT_DELETE_SCHEMA_DIR` to the path
+where the schema files live, or include `prisma/schema/` in the image.
+
+#### When you add a new soft-deletable model
+
+1. Add `deletedAt`, `deletedBy`, and `deletedByCascade` columns to the
+   `.prisma` model.
+2. Generate the migration. If the model has unique constraints whose
+   identifier should be reclaimable after archive (e.g. a tenant-scoped
+   email), edit the generated migration to make those uniques **partial**:
+   `CREATE UNIQUE INDEX "..._key" ON "Table"(...) WHERE "deletedAt" IS NULL`.
+   Keep the index name Prisma chose so `upsert` keeps working.
+3. If the model is a composition child of another soft-deletable model,
+   add `onDelete: Cascade` to the `@relation` — the extension will pick
+   it up automatically.
+4. Wire any soft-delete handler in the feature service to call the
+   `softDelete` / `restore` helpers inside `$transaction`.
+
+#### Anti-patterns
+
+- ❌ Writing `prisma.member.update(...)` to mutate a tombstone — the
+  extension blocks this. Use `restore` or pass an explicit `deletedAt`
+  filter if you genuinely need to touch a tombstone.
+- ❌ Using `upsert` to "find or restore" an archived row — upsert
+  creates a fresh row in the freed slot (partial unique allows it).
+  Restore the tombstone explicitly to preserve linked history.
+- ❌ Per-repo soft-delete implementations — the extension is the source
+  of truth.
+- ❌ Threading `deletedAt: undefined` through 4 levels of nested
+  `include` by hand — use `withDeleted(modelName, args)` instead.
+- ❌ Assuming `pledge.campaign` is non-null at runtime when the
+  campaign might be archived. Required to-one relations surface
+  tombstones; check `pledge.campaign.deletedAt`.
 
 ### 8.4 Tenant scoping
 
@@ -972,8 +1100,66 @@ Before you save changes:
 If all eight are clean, the change is safe to commit.
  
  ---
- 
- ## 14. Date Handling
+
+## 14. Integration testing
+
+We use **Vitest + Testcontainers (Postgres)** for integration tests
+that exercise the real database. There are no mocks at the Prisma layer
+— every test runs against an ephemeral Postgres container so behaviors
+like the soft-delete extension are verified end-to-end.
+
+### Running
+
+```bash
+npm run test:integration         # one-shot
+npm run test:integration:watch   # watch mode
+```
+
+First run pulls `postgres:16-alpine` (~5s on a fast connection); after
+that the image is cached. A full suite takes ~10 seconds.
+
+### Layout
+
+```
+test/
+├── setup/
+│   └── global-setup.ts       # boots ONE container per test run, applies
+│                             # `prisma migrate deploy` against it
+└── integration/
+    └── <feature>.integration.test.ts
+```
+
+Test files share a single container; per-test isolation is handled by
+truncating tables in `beforeEach` (see [test/helpers/db.ts](test/helpers/db.ts)).
+
+### Conventions
+
+- **Use the real `PrismaClientService`** via `makeTestClient()` — same
+  proxy + extension wiring as production. Don't construct a bare
+  `PrismaClient`; you'd miss the soft-delete behavior.
+- **`beforeEach` truncates every table** — write seed helpers, don't
+  rely on data carried over between tests.
+- **Migrations apply via `prisma migrate deploy`**, not `db push` — so
+  a broken migration fails the test suite, not only the prod deploy.
+- **File naming**: `*.integration.test.ts` (Vitest's `include` pattern
+  in [vitest.config.ts](vitest.config.ts)).
+- **Test files live in `test/`**, NOT alongside source. The build
+  config excludes `test/` so production bundles aren't polluted.
+
+### When to add an integration test
+
+- Behavior involves the database directly (soft-delete semantics,
+  cascade behavior, partial unique indexes, migration correctness).
+- The unit you're testing depends on Prisma's actual query shape — not
+  a thin service wrapper around a repository.
+- You're touching the soft-delete extension or the schema parser.
+
+For pure-logic tests (DTO transforms, CASL rules, etc.), unit-level
+Jest/Vitest mocks are fine — those don't belong in `test/integration/`.
+
+ ---
+
+ ## 15. Date Handling
  
  We exclusively use **dayjs** for all date manipulation, parsing, and arithmetic.
  

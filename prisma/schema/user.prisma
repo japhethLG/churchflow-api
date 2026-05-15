@@ -6,9 +6,11 @@ model User {
   displayName  String
   photoUrl     String?
   isSuperAdmin Boolean   @default(false)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+  deletedBy        String?
+  deletedByCascade Boolean   @default(false)
 
   memberships Member[]
 

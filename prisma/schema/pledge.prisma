@@ -16,10 +16,12 @@ model Pledge {
   pledgedAmount  Decimal      @db.Decimal(14, 2)
   status         PledgeStatus @default(ACTIVE)
   note           String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  deletedAt      DateTime?
-  createdBy      String
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+  deletedBy        String?
+  deletedByCascade Boolean   @default(false)
+  createdBy        String
 
   campaign     Campaign      @relation(fields: [campaignId], references: [id])
   campaignItem CampaignItem? @relation(fields: [campaignItemId], references: [id])

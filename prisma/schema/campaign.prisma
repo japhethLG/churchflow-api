@@ -14,11 +14,13 @@ model Campaign {
   description String?
   // Null = open-ended campaign (e.g. ongoing building fund).
   deadline    DateTime?
-  status      CampaignStatus @default(ACTIVE)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  deletedAt   DateTime?
-  createdBy   String
+  status           CampaignStatus @default(ACTIVE)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  deletedAt        DateTime?
+  deletedBy        String?
+  deletedByCascade Boolean        @default(false)
+  createdBy        String
 
   tenant       Tenant         @relation(fields: [tenantId], references: [id])
   items        CampaignItem[]
@@ -39,12 +41,14 @@ model CampaignItem {
   targetAmount Decimal   @db.Decimal(14, 2)
   // Null = inherit campaign.deadline (resolved in API layer, not stored).
   deadline     DateTime?
-  sortOrder    Int       @default(0)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
+  sortOrder        Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+  deletedBy        String?
+  deletedByCascade Boolean   @default(false)
 
-  campaign     Campaign      @relation(fields: [campaignId], references: [id])
+  campaign     Campaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   pledges      Pledge[]
   transactions Transaction[]
 

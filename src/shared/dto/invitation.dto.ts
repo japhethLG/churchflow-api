@@ -62,4 +62,8 @@ export class InvitationDto {
 	@Expose()
 	@ApiProperty({ example: DATE_UTC_EXAMPLE })
 	updatedAt!: Date;
+
+	@Expose()
+	@ApiPropertyOptional({ example: DATE_UTC_EXAMPLE, nullable: true })
+	deletedAt!: Date | null;
 }
