@@ -1,7 +1,10 @@
 import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
+import {
+	softDelete,
+	withDeleted,
+} from "@infrastructure/prisma-client/soft-delete";
 import { Injectable } from "@nestjs/common";
 import { CampaignItem, Prisma } from "@prisma/client";
-import dayjs from "@shared/dayjs";
 
 import {
 	CampaignItemFilters,
@@ -19,7 +22,7 @@ export class CampaignItemRepository {
 
 	async findById(tenantId: string, id: string): Promise<CampaignItem | null> {
 		return this.prisma.campaignItem.findFirst({
-			where: { id, tenantId, deletedAt: null },
+			where: { id, tenantId },
 		});
 	}
 
@@ -29,7 +32,6 @@ export class CampaignItemRepository {
 	): Promise<CampaignItem[]> {
 		const where: Prisma.CampaignItemWhereInput = {
 			tenantId,
-			deletedAt: null,
 			...(filters.campaignId ? { campaignId: filters.campaignId } : {}),
 		};
 
@@ -47,10 +49,19 @@ export class CampaignItemRepository {
 		return this.prisma.campaignItem.update({ where: { id }, data });
 	}
 
-	async softDelete(_tenantId: string, id: string): Promise<CampaignItem> {
-		return this.prisma.campaignItem.update({
-			where: { id },
-			data: { deletedAt: dayjs().toDate() },
+	async softDelete(
+		tenantId: string,
+		id: string,
+		actorId: string | null,
+	): Promise<CampaignItem> {
+		return this.prisma.$transaction(async (tx) => {
+			await softDelete(tx, "CampaignItem", {
+				where: { id, tenantId },
+				actorId,
+			});
+			return tx.campaignItem.findFirstOrThrow(
+				withDeleted("CampaignItem", { where: { id, tenantId } }),
+			);
 		});
 	}
 }

@@ -1,6 +1,7 @@
-import { PrismaClientModule } from "@infrastructure/prisma-client/prisma-client.module";
 import { AuditCoreModule } from "@modules/core/audit/audit.module";
+import { MemberCoreModule } from "@modules/core/member/member.module";
 import { TenantCoreModule } from "@modules/core/tenant/tenant.module";
+import { TransactionCoreModule } from "@modules/core/transaction/transaction.module";
 import { Module } from "@nestjs/common";
 
 import { TenantPlatformController } from "./controllers/platform";
@@ -9,7 +10,12 @@ import { TenantTenantController } from "./controllers/tenant";
 import { TenantFeatureService } from "./services/tenant-feature.service";
 
 @Module({
-	imports: [TenantCoreModule, AuditCoreModule, PrismaClientModule],
+	imports: [
+		TenantCoreModule,
+		MemberCoreModule,
+		TransactionCoreModule,
+		AuditCoreModule,
+	],
 	controllers: [
 		TenantPlatformController,
 		TenantTenantController,

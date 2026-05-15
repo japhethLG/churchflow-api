@@ -1,7 +1,10 @@
 import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
+import {
+	softDelete,
+	withDeleted,
+} from "@infrastructure/prisma-client/soft-delete";
 import { Injectable } from "@nestjs/common";
 import { Pledge, Prisma } from "@prisma/client";
-import dayjs from "@shared/dayjs";
 
 import {
 	CreatePledgeInput,
@@ -34,10 +37,10 @@ export class PledgeRepository {
 	): Promise<PledgeWithAmounts | null> {
 		const [pledge, aggregate] = await Promise.all([
 			this.prisma.pledge.findFirst({
-				where: { id, tenantId, deletedAt: null },
+				where: { id, tenantId },
 			}),
 			this.prisma.transaction.aggregate({
-				where: { pledgeId: id, deletedAt: null },
+				where: { pledgeId: id },
 				_sum: { amount: true },
 			}),
 		]);
@@ -58,7 +61,6 @@ export class PledgeRepository {
 	): Promise<PledgeListResult> {
 		const where: Prisma.PledgeWhereInput = {
 			tenantId,
-			deletedAt: null,
 			...(filters.campaignId ? { campaignId: filters.campaignId } : {}),
 			...(filters.campaignItemId
 				? { campaignItemId: filters.campaignItemId }
@@ -83,7 +85,7 @@ export class PledgeRepository {
 			pledgeIds.length > 0
 				? await this.prisma.transaction.groupBy({
 						by: ["pledgeId"],
-						where: { pledgeId: { in: pledgeIds }, deletedAt: null },
+						where: { pledgeId: { in: pledgeIds } },
 						_sum: { amount: true },
 					})
 				: [];
@@ -118,10 +120,19 @@ export class PledgeRepository {
 		return this.prisma.pledge.update({ where: { id }, data });
 	}
 
-	async softDelete(_tenantId: string, id: string): Promise<Pledge> {
-		return this.prisma.pledge.update({
-			where: { id },
-			data: { deletedAt: dayjs().toDate() },
+	async softDelete(
+		tenantId: string,
+		id: string,
+		actorId: string | null,
+	): Promise<Pledge> {
+		return this.prisma.$transaction(async (tx) => {
+			await softDelete(tx, "Pledge", {
+				where: { id, tenantId },
+				actorId,
+			});
+			return tx.pledge.findFirstOrThrow(
+				withDeleted("Pledge", { where: { id, tenantId } }),
+			);
 		});
 	}
 

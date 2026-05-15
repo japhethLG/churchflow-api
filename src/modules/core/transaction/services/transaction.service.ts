@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 
 import { Transaction } from "@prisma/client";
 import {
+	BulkCreateItem,
+	TransactionAggregate,
 	TransactionListResult,
 	TransactionRepository,
 	TransactionSummaryResult,
@@ -18,6 +20,23 @@ export class TransactionService {
 
 	async create(data: CreateTransactionInput): Promise<Transaction> {
 		return this.transactionRepository.create(data);
+	}
+
+	async createManyWithAudit(items: BulkCreateItem[]): Promise<Transaction[]> {
+		return this.transactionRepository.createManyWithAudit(items);
+	}
+
+	async aggregateAll(
+		filters: { since?: Date } = {},
+	): Promise<TransactionAggregate> {
+		return this.transactionRepository.aggregateAll(filters);
+	}
+
+	async aggregateForTenant(
+		tenantId: string,
+		filters: { since?: Date } = {},
+	): Promise<TransactionAggregate> {
+		return this.transactionRepository.aggregateForTenant(tenantId, filters);
 	}
 
 	async getById(tenantId: string, id: string): Promise<Transaction> {
@@ -52,9 +71,13 @@ export class TransactionService {
 		return this.transactionRepository.update(tenantId, id, data);
 	}
 
-	async delete(tenantId: string, id: string): Promise<Transaction> {
+	async delete(
+		tenantId: string,
+		id: string,
+		actorId: string | null,
+	): Promise<Transaction> {
 		await this.getById(tenantId, id);
-		return this.transactionRepository.softDelete(tenantId, id);
+		return this.transactionRepository.softDelete(tenantId, id, actorId);
 	}
 
 	async reassignMember(

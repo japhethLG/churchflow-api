@@ -15,23 +15,23 @@ export class InvitationRepository {
 
 	async findByToken(token: string): Promise<Invitation | null> {
 		return this.prisma.invitation.findFirst({
-			where: { token, deletedAt: null },
+			where: { token },
 		});
 	}
 
 	async findById(id: string): Promise<Invitation | null> {
-		return this.prisma.invitation.findFirst({ where: { id, deletedAt: null } });
+		return this.prisma.invitation.findFirst({ where: { id } });
 	}
 
 	async findPendingByEmail(email: string): Promise<Invitation[]> {
 		return this.prisma.invitation.findMany({
-			where: { email, status: InvitationStatus.PENDING, deletedAt: null },
+			where: { email, status: InvitationStatus.PENDING },
 		});
 	}
 
 	async findPendingForTenant(tenantId: string): Promise<Invitation[]> {
 		return this.prisma.invitation.findMany({
-			where: { tenantId, status: InvitationStatus.PENDING, deletedAt: null },
+			where: { tenantId, status: InvitationStatus.PENDING },
 			orderBy: { createdAt: "desc" },
 		});
 	}
@@ -57,7 +57,6 @@ export class InvitationRepository {
 				tenantId,
 				email,
 				status: InvitationStatus.PENDING,
-				deletedAt: null,
 			},
 		});
 	}

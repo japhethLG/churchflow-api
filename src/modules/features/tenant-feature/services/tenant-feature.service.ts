@@ -1,7 +1,8 @@
 import { AuthUser } from "@infrastructure/firebase-auth/types/auth-user.type";
-import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
 import { AuditService } from "@modules/core/audit/services/audit.service";
+import { MemberService } from "@modules/core/member/services/member.service";
 import { TenantService } from "@modules/core/tenant/services/tenant.service";
+import { TransactionService } from "@modules/core/transaction/services/transaction.service";
 import { Injectable } from "@nestjs/common";
 import { AuditAction, MemberRole, type Tenant } from "@prisma/client";
 import dayjs from "@shared/dayjs";
@@ -48,8 +49,9 @@ export interface TenantListItem extends Tenant {
 export class TenantFeatureService {
 	constructor(
 		private readonly tenantService: TenantService,
+		private readonly memberService: MemberService,
+		private readonly transactionService: TransactionService,
 		private readonly auditService: AuditService,
-		private readonly prisma: PrismaClientService,
 	) {}
 
 	async create(
@@ -74,9 +76,7 @@ export class TenantFeatureService {
 
 	async list(): Promise<TenantListItem[]> {
 		// Include soft-deleted so super-admin can see and restore archived tenants.
-		const tenants = await this.prisma.tenant.findMany({
-			orderBy: { createdAt: "desc" },
-		});
+		const tenants = await this.tenantService.getAllIncludingDeleted();
 		return Promise.all(tenants.map((t) => this.enrichTenant(t)));
 	}
 
@@ -84,33 +84,18 @@ export class TenantFeatureService {
 		const monthStart = dayjs().startOf("month").toDate();
 
 		const [adminCount, memberCount, adminsRaw, giftsMtd] = await Promise.all([
-			this.prisma.member.count({
-				where: { tenantId: tenant.id, deletedAt: null, role: MemberRole.ADMIN },
-			}),
-			this.prisma.member.count({
-				where: { tenantId: tenant.id, deletedAt: null },
-			}),
-			this.prisma.member.findMany({
-				where: { tenantId: tenant.id, deletedAt: null, role: MemberRole.ADMIN },
-				include: { user: { select: { displayName: true, photoUrl: true } } },
-				orderBy: { createdAt: "asc" },
-				take: 3,
-			}),
-			this.prisma.transaction.aggregate({
-				where: {
-					tenantId: tenant.id,
-					deletedAt: null,
-					date: { gte: monthStart },
-				},
-				_sum: { amount: true },
-				_count: { _all: true },
+			this.memberService.countForTenant(tenant.id, { role: MemberRole.ADMIN }),
+			this.memberService.countForTenant(tenant.id),
+			this.memberService.getAdminsPreview(tenant.id, 3),
+			this.transactionService.aggregateForTenant(tenant.id, {
+				since: monthStart,
 			}),
 		]);
 
 		const adminsPreview: TenantAdminPreview[] = adminsRaw.map((m) => ({
-			memberId: m.id,
-			displayName: m.user?.displayName ?? `${m.firstName} ${m.lastName}`,
-			photoUrl: m.user?.photoUrl ?? null,
+			memberId: m.memberId,
+			displayName: m.displayName ?? `${m.firstName} ${m.lastName}`,
+			photoUrl: m.photoUrl,
 		}));
 
 		return {
@@ -118,8 +103,8 @@ export class TenantFeatureService {
 			adminCount,
 			memberCount,
 			adminsPreview,
-			giftsMtdCount: giftsMtd._count._all,
-			giftsMtdTotal: Number(giftsMtd._sum.amount ?? 0),
+			giftsMtdCount: giftsMtd.count,
+			giftsMtdTotal: giftsMtd.total,
 		};
 	}
 
@@ -166,7 +151,7 @@ export class TenantFeatureService {
 	}
 
 	async delete(user: AuthUser, id: string): Promise<Tenant> {
-		const tenant = await this.tenantService.delete(id);
+		const tenant = await this.tenantService.delete(id, user.firebaseUid);
 		await this.auditService.record({
 			tenantId: tenant.id,
 			actorUid: user.firebaseUid,

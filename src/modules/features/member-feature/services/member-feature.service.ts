@@ -213,7 +213,11 @@ export class MemberFeatureService {
 		tenant: TenantContext,
 		id: string,
 	): Promise<Member> {
-		const member = await this.memberService.delete(tenant.tenantId, id);
+		const member = await this.memberService.delete(
+			tenant.tenantId,
+			id,
+			user.firebaseUid,
+		);
 
 		// Remove the tenant from the user's claims if they were linked.
 		if (member.userId) {

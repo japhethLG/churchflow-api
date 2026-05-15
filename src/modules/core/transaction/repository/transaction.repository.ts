@@ -1,5 +1,10 @@
 import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
-import { Injectable } from "@nestjs/common";
+import {
+	softDelete,
+	withDeleted,
+} from "@infrastructure/prisma-client/soft-delete";
+import type { WriteAuditEventInput } from "@modules/core/audit/audit.types";
+import { Injectable, Logger } from "@nestjs/common";
 import { Prisma, Transaction, TransactionType } from "@prisma/client";
 import dayjs from "@shared/dayjs";
 
@@ -22,17 +27,96 @@ export interface TransactionSummaryResult {
 	byMonth: Array<{ month: string; total: number; count: number }>;
 }
 
+export interface TransactionAggregate {
+	total: number;
+	count: number;
+}
+
+export interface BulkCreateItem {
+	createInput: CreateTransactionInput;
+	buildAudit: (row: Transaction) => WriteAuditEventInput;
+}
+
 @Injectable()
 export class TransactionRepository {
+	private readonly logger = new Logger(TransactionRepository.name);
+
 	constructor(private readonly prisma: PrismaClientService) {}
 
 	async create(data: CreateTransactionInput): Promise<Transaction> {
 		return this.prisma.transaction.create({ data });
 	}
 
+	// Atomic bulk insert with paired audit events. Audit-write failures are
+	// swallowed-and-logged to match AuditService.record's behaviour, so an
+	// audit hiccup never rolls back the user's gifts.
+	async createManyWithAudit(items: BulkCreateItem[]): Promise<Transaction[]> {
+		return this.prisma.$transaction(async (tx) => {
+			const created: Transaction[] = [];
+			for (const item of items) {
+				const row = await tx.transaction.create({ data: item.createInput });
+				const auditInput = item.buildAudit(row);
+				try {
+					await tx.auditEvent.create({
+						data: {
+							tenantId: auditInput.tenantId,
+							actorUid: auditInput.actorUid,
+							actorEmail: auditInput.actorEmail ?? null,
+							action: auditInput.action,
+							entity: auditInput.entity,
+							entityId: auditInput.entityId,
+							summary: auditInput.summary ?? null,
+							diff: (auditInput.diff ?? null) as Prisma.InputJsonValue,
+						},
+					});
+				} catch (err) {
+					this.logger.error(
+						`audit write failed inside bulk (entityId=${row.id}): ${(err as Error).message}`,
+					);
+				}
+				created.push(row);
+			}
+			return created;
+		});
+	}
+
+	// Cross-tenant aggregate for platform stats.
+	async aggregateAll(
+		filters: { since?: Date } = {},
+	): Promise<TransactionAggregate> {
+		const agg = await this.prisma.transaction.aggregate({
+			where: filters.since ? { date: { gte: filters.since } } : undefined,
+			_sum: { amount: true },
+			_count: { _all: true },
+		});
+		return {
+			total: Number(agg._sum.amount ?? 0),
+			count: agg._count._all,
+		};
+	}
+
+	// Tenant-scoped aggregate with optional date floor.
+	async aggregateForTenant(
+		tenantId: string,
+		filters: { since?: Date } = {},
+	): Promise<TransactionAggregate> {
+		const agg = await this.prisma.transaction.aggregate({
+			where: {
+				tenantId,
+				...(filters.since ? { date: { gte: filters.since } } : {}),
+			},
+			_sum: { amount: true },
+			_count: { _all: true },
+		});
+		return {
+			total: Number(agg._sum.amount ?? 0),
+			count: agg._count._all,
+		};
+	}
+
 	async findById(tenantId: string, id: string): Promise<Transaction | null> {
 		return this.prisma.transaction.findFirst({
-			where: { id, tenantId, deletedAt: null },
+			where: { id, tenantId },
 		});
 	}
 
@@ -63,11 +147,10 @@ export class TransactionRepository {
 	): Promise<TransactionSummaryResult> {
 		const where: Prisma.TransactionWhereInput = {
 			tenantId,
-			deletedAt: null,
 			date: { gte: dateFrom, lte: dateTo },
 		};
 
-		const [aggregate, byTypeRaw, byMonthRaw] = await Promise.all([
+		const [aggregate, byTypeRaw, rows] = await Promise.all([
 			this.prisma.transaction.aggregate({
 				where,
 				_sum: { amount: true },
@@ -79,23 +162,27 @@ export class TransactionRepository {
 				_sum: { amount: true },
 				_count: { _all: true },
 			}),
-			// date_trunc bucketing is simpler + faster in raw SQL than many
-			// client-side Date round-trips.
-			this.prisma.$queryRaw<
-				Array<{ month: Date; total: string | number; count: bigint }>
-			>`
-        SELECT
-          date_trunc('month', "date") AS month,
-          SUM("amount")::numeric AS total,
-          COUNT(*)::bigint AS count
-        FROM "Transaction"
-        WHERE "tenantId" = ${tenantId}
-          AND "deletedAt" IS NULL
-          AND "date" BETWEEN ${dateFrom} AND ${dateTo}
-        GROUP BY month
-        ORDER BY month ASC
-      `,
+			// Bucket by month in JS so the soft-delete extension's auto-filter
+			// applies. $queryRaw bypasses the extension and would surface
+			// tombstones.
+			this.prisma.transaction.findMany({
+				where,
+				select: { date: true, amount: true },
+			}),
 		]);
+
+		const byMonthMap = new Map<string, { total: number; count: number }>();
+		for (const row of rows) {
+			const month = dayjs(row.date).format("YYYY-MM");
+			const bucket = byMonthMap.get(month) ?? { total: 0, count: 0 };
+			bucket.total += Number(row.amount);
+			bucket.count += 1;
+			byMonthMap.set(month, bucket);
+		}
+
+		const byMonth = Array.from(byMonthMap.entries())
+			.sort(([a], [b]) => a.localeCompare(b))
+			.map(([month, agg]) => ({ month, ...agg }));
 
 		return {
 			total: Number(aggregate._sum.amount ?? 0),
@@ -105,11 +192,7 @@ export class TransactionRepository {
 				total: Number(row._sum.amount ?? 0),
 				count: row._count._all,
 			})),
-			byMonth: byMonthRaw.map((row) => ({
-				month: dayjs(row.month).format("YYYY-MM"),
-				total: Number(row.total ?? 0),
-				count: Number(row.count ?? 0),
-			})),
+			byMonth,
 		};
 	}
 
@@ -121,10 +204,19 @@ export class TransactionRepository {
 		return this.prisma.transaction.update({ where: { id }, data });
 	}
 
-	async softDelete(_tenantId: string, id: string): Promise<Transaction> {
-		return this.prisma.transaction.update({
-			where: { id },
-			data: { deletedAt: dayjs().toDate() },
+	async softDelete(
+		tenantId: string,
+		id: string,
+		actorId: string | null,
+	): Promise<Transaction> {
+		return this.prisma.$transaction(async (tx) => {
+			await softDelete(tx, "Transaction", {
+				where: { id, tenantId },
+				actorId,
+			});
+			return tx.transaction.findFirstOrThrow(
+				withDeleted("Transaction", { where: { id, tenantId } }),
+			);
 		});
 	}
 
@@ -149,7 +241,6 @@ export class TransactionRepository {
 	): Prisma.TransactionWhereInput {
 		return {
 			tenantId,
-			deletedAt: null,
 			...(filters.memberId ? { memberId: filters.memberId } : {}),
 			...(filters.campaignId ? { campaignId: filters.campaignId } : {}),
 			...(filters.campaignItemId

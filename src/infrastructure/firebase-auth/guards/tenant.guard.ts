@@ -59,7 +59,6 @@ export class TenantGuard implements CanActivate {
 		const tenant = await this.prisma.tenant.findFirst({
 			where: {
 				OR: [{ id: idOrSlug }, { slug: idOrSlug }],
-				deletedAt: null,
 			},
 			select: { id: true, slug: true },
 		});

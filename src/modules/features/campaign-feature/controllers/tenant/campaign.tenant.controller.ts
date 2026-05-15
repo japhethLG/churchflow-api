@@ -218,6 +218,7 @@ export class CampaignTenantController {
 	@ApiOperation({ summary: "Soft-delete a campaign item (admin only)" })
 	@ApiOkResponse({ type: DeleteResponseDto })
 	async deleteItem(
+		@CurrentUser() user: AuthUser,
 		@CurrentTenant() tenant: TenantContext,
 		@CurrentAbility() ability: AppAbility,
 		@Param("id") campaignId: string,
@@ -225,6 +226,7 @@ export class CampaignTenantController {
 	): Promise<DeleteResponseDto> {
 		assertCan(ability, "delete", "CampaignItem");
 		const deleted = await this.campaignFeatureService.deleteItem(
+			user,
 			tenant,
 			campaignId,
 			itemId,

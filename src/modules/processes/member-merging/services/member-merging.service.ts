@@ -102,7 +102,7 @@ export class MemberMergingService {
 			: keep;
 
 		// Soft-delete the dropped member.
-		await this.memberService.delete(input.tenantId, drop.id);
+		await this.memberService.delete(input.tenantId, drop.id, input.actorUid);
 
 		// If the dropped row was linked to a user, that user's tenantMemberships
 		// claims now point at a soft-deleted member — refresh so they pick up

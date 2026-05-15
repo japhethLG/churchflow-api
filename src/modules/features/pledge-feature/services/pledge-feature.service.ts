@@ -120,7 +120,11 @@ export class PledgeFeatureService {
 		tenant: TenantContext,
 		id: string,
 	): Promise<Pledge> {
-		const pledge = await this.pledgeService.delete(tenant.tenantId, id);
+		const pledge = await this.pledgeService.delete(
+			tenant.tenantId,
+			id,
+			user.firebaseUid,
+		);
 		await this.auditService.record({
 			tenantId: tenant.tenantId,
 			actorUid: user.firebaseUid,

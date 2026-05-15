@@ -1,7 +1,9 @@
 import { AuthUser } from "@infrastructure/firebase-auth/types/auth-user.type";
 import { UserClaimsService } from "@infrastructure/firebase-auth/user-claims.service";
-import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
 import { AuditService } from "@modules/core/audit/services/audit.service";
+import { MemberService } from "@modules/core/member/services/member.service";
+import { TenantService } from "@modules/core/tenant/services/tenant.service";
+import { TransactionService } from "@modules/core/transaction/services/transaction.service";
 import { UserService } from "@modules/core/user/services/user.service";
 import { BadRequestException, Injectable } from "@nestjs/common";
 import {
@@ -62,7 +64,9 @@ export interface AdminUserListResult {
 @Injectable()
 export class AdminFeatureService {
 	constructor(
-		private readonly prisma: PrismaClientService,
+		private readonly tenantService: TenantService,
+		private readonly memberService: MemberService,
+		private readonly transactionService: TransactionService,
 		private readonly userService: UserService,
 		private readonly userClaims: UserClaimsService,
 		private readonly auditService: AuditService,
@@ -81,33 +85,13 @@ export class AdminFeatureService {
 			newMembersThisMonth,
 			giftsAggregate,
 		] = await Promise.all([
-			this.prisma.tenant.count({ where: { deletedAt: null } }),
-			this.prisma.tenant.count({
-				where: { deletedAt: null, createdAt: { gte: monthStart } },
-			}),
-			this.prisma.user.count({ where: { isSuperAdmin: true } }),
-			this.prisma.member.count({
-				where: {
-					deletedAt: null,
-					role: MemberRole.ADMIN,
-					tenant: { deletedAt: null },
-				},
-			}),
-			this.prisma.member.count({
-				where: { deletedAt: null, tenant: { deletedAt: null } },
-			}),
-			this.prisma.member.count({
-				where: {
-					deletedAt: null,
-					createdAt: { gte: monthStart },
-					tenant: { deletedAt: null },
-				},
-			}),
-			this.prisma.transaction.aggregate({
-				where: { deletedAt: null, date: { gte: last30d } },
-				_sum: { amount: true },
-				_count: { _all: true },
-			}),
+			this.tenantService.countAll(),
+			this.tenantService.countCreatedSince(monthStart),
+			this.userService.countSuperAdmins(),
+			this.memberService.countAcrossTenants({ role: MemberRole.ADMIN }),
+			this.memberService.countAcrossTenants(),
+			this.memberService.countAcrossTenants({ createdSince: monthStart }),
+			this.transactionService.aggregateAll({ since: last30d }),
 		]);
 
 		return {
@@ -117,69 +101,39 @@ export class AdminFeatureService {
 			totalAdmins,
 			totalMembers,
 			newMembersThisMonth,
-			giftsLast30dCount: giftsAggregate._count._all,
-			giftsLast30dTotal: Number(giftsAggregate._sum.amount ?? 0),
+			giftsLast30dCount: giftsAggregate.count,
+			giftsLast30dTotal: giftsAggregate.total,
 		};
 	}
 
 	async listUsers(query: AdminUsersQueryInput): Promise<AdminUserListResult> {
-		const take = query.take ?? 50;
-		const skip = query.skip ?? 0;
+		const { items, total } = await this.userService.listWithMemberships({
+			search: query.search,
+			tenantId: query.tenantId,
+			superAdminOnly: query.superAdminOnly,
+			skip: query.skip,
+			take: query.take,
+		});
 
-		const where: Record<string, unknown> = {
-			...(query.superAdminOnly ? { isSuperAdmin: true } : {}),
-		};
-
-		if (query.search) {
-			where.OR = [
-				{ email: { contains: query.search, mode: "insensitive" } },
-				{ displayName: { contains: query.search, mode: "insensitive" } },
-			];
-		}
-
-		if (query.tenantId) {
-			where.memberships = {
-				some: { tenantId: query.tenantId, deletedAt: null },
-			};
-		}
-
-		const [users, total] = await Promise.all([
-			this.prisma.user.findMany({
-				where,
-				include: {
-					memberships: {
-						where: { deletedAt: null, tenant: { deletedAt: null } },
-						include: {
-							tenant: { select: { id: true, slug: true, name: true } },
-						},
-					},
-				},
-				orderBy: { createdAt: "desc" },
-				skip,
-				take,
-			}),
-			this.prisma.user.count({ where }),
-		]);
-
-		const items: AdminUser[] = users.map((u) => ({
-			id: u.id,
-			email: u.email,
-			displayName: u.displayName,
-			photoUrl: u.photoUrl,
-			isSuperAdmin: u.isSuperAdmin,
-			createdAt: u.createdAt,
-			memberships: u.memberships.map(
+		const users: AdminUser[] = items.map(({ user, memberships }) => ({
+			id: user.id,
+			email: user.email,
+			displayName: user.displayName,
+			photoUrl: user.photoUrl,
+			isSuperAdmin: user.isSuperAdmin,
+			createdAt: user.createdAt,
+			memberships: memberships.map(
 				(m): AdminUserMembership => ({
-					tenantId: m.tenant.id,
-					tenantSlug: m.tenant.slug,
-					tenantName: m.tenant.name,
-					memberId: m.id,
+					tenantId: m.tenantId,
+					tenantSlug: m.tenantSlug,
+					tenantName: m.tenantName,
+					memberId: m.memberId,
 					role: m.role,
 				}),
 			),
 		}));
 
-		return { items, total };
+		return { items: users, total };
 	}
 
 	async toggleSuperAdmin(
@@ -213,11 +167,7 @@ export class AdminFeatureService {
 			summary: `${data.isSuperAdmin ? "Promoted" : "Demoted"} ${user.email} ${data.isSuperAdmin ? "to" : "from"} super admin`,
 		});
 
-		const members = await this.prisma.member.findMany({
-			where: { userId: user.id, deletedAt: null, tenant: { deletedAt: null } },
-			include: { tenant: { select: { id: true, slug: true, name: true } } },
-			orderBy: { createdAt: "asc" },
-		});
+		const memberships = await this.memberService.getAllForUser(user.id);
 
 		return {
 			id: user.id,
@@ -226,12 +176,12 @@ export class AdminFeatureService {
 			photoUrl: user.photoUrl,
 			isSuperAdmin: user.isSuperAdmin,
 			createdAt: user.createdAt,
-			memberships: members.map(
+			memberships: memberships.map(
 				(m): AdminUserMembership => ({
-					tenantId: m.tenant.id,
-					tenantSlug: m.tenant.slug,
-					tenantName: m.tenant.name,
-					memberId: m.id,
+					tenantId: m.tenantId,
+					tenantSlug: m.tenantSlug,
+					tenantName: m.tenantName,
+					memberId: m.memberId,
 					role: m.role,
 				}),
 			),

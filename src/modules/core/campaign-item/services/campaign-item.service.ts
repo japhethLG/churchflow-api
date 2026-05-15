@@ -41,8 +41,12 @@ export class CampaignItemService {
 		return this.repository.update(tenantId, id, data);
 	}
 
-	async delete(tenantId: string, id: string): Promise<CampaignItem> {
+	async delete(
+		tenantId: string,
+		id: string,
+		actorId: string | null,
+	): Promise<CampaignItem> {
 		await this.getById(tenantId, id);
-		return this.repository.softDelete(tenantId, id);
+		return this.repository.softDelete(tenantId, id, actorId);
 	}
 }

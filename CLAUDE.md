@@ -304,13 +304,21 @@ modules/core/<entity>/
      contract, not an HTTP boundary.
    - **NO** `@ApiProperty`. Core modules have no HTTP surface.
 2. **`repository/<entity>.repository.ts`** is the *only* file in the whole
-   codebase that imports `Prisma` types (`Prisma.XxxWhereInput`, etc.).
+   codebase that imports `Prisma` types (`Prisma.XxxWhereInput`, etc.)
+   **and** the *only* place that calls `this.prisma.*` directly. Services
+   and features never touch `this.prisma` — if a feature needs a new
+   query, add a method to the relevant repo + service.
    - Inject `PrismaClientService`.
-   - For tenant-scoped entities, `findById(tenantId, id)` etc. must
-     filter by `tenantId` AND `deletedAt: null` (soft delete).
-   - `update()` / `softDelete()` use `where: { id }` (Prisma 7 requires a
-     unique `where`) — tenant ownership is verified by the service's
+   - For tenant-scoped entities, `findById(tenantId, id)` etc. filter
+     by `tenantId`; **do not** manually add `deletedAt: null` — the
+     soft-delete extension injects it automatically at every nesting
+     depth (see §8.3).
+   - `update()` uses `where: { id }` (Prisma 7 requires a unique
+     `where`) — tenant ownership is verified by the service's
      `getById()` call **before** mutation.
+   - `softDelete()` / `restore()` wrap the cascade-aware helpers from
+     [soft-delete](src/infrastructure/prisma-client/soft-delete/) — see
+     §8.3 for the exact shape.
 3. **`services/<entity>.service.ts`** wraps the repo, throws
    `NotFoundException` for missing records, and enforces invariants.
    - Takes the interfaces from `<entity>.types.ts`.
@@ -331,7 +339,14 @@ modules/core/<entity>/
 - ❌ Core service importing another core service. Use a process/feature instead.
 - ❌ `class-validator` decorators on `*.types.ts`. Move to feature request DTOs.
 - ❌ Importing Prisma types outside `repository/`.
-- ❌ Skipping `deletedAt: null` in a read query (soft-deleted rows leak into the API).
+- ❌ Calling `this.prisma.*` from a service (core, feature, or process).
+  Data access lives in repositories. The only exceptions are documented
+  infrastructure services that *cannot* import Core (e.g.
+  [user-claims.service.ts](src/infrastructure/firebase-auth/user-claims.service.ts),
+  [tenant.guard.ts](src/infrastructure/firebase-auth/guards/tenant.guard.ts))
+  — those carry an in-file comment explaining the layering trade-off.
+- ❌ Hand-stamping `deletedAt: null` into a where clause — the
+  extension already injects it (see §8.3).
 
 ### 6.2 Process module (`src/modules/processes/<name>-processing/`)
 
@@ -770,21 +785,57 @@ Prisma schema. This catches typos like `withDeleted("Memer", ...)` that
 would otherwise silently no-op and leak tombstones into a query the
 caller thought was opted out.
 
-#### The `softDelete` / `restore` helpers
+#### The `softDelete` / `restore` helpers — repository layer only
+
+The helpers exist in
+[soft-delete.helpers.ts](src/infrastructure/prisma-client/soft-delete/soft-delete.helpers.ts).
+**They are invoked by repositories, not by services or features.** Each
+soft-deletable entity exposes the operation through three layers:
+
+```text
+Feature/Process service
+        ▼  passes actorId from @CurrentUser()
+Core service.delete(tenantId, id, actorId)   ← throws NotFoundException on miss
+        ▼
+Core repository.softDelete(tenantId, id, actorId)   ← wraps the helper
+        ▼
+softDelete(tx, "Model", { where, actorId })   ← runs the cascade in $transaction
+```
+
+Concretely:
 
 ```ts
-import { softDelete, restore } from "@infrastructure/prisma-client/soft-delete";
+// Feature service (e.g. CampaignFeatureService.delete) — calls core service.
+const campaign = await this.campaignService.delete(
+  tenant.tenantId,
+  id,
+  user.firebaseUid,
+);
+await this.auditService.record({ ... entityId: campaign.id });
 
-// Soft-delete + cascade into composition children (`@relation(onDelete: Cascade)`)
-await prisma.$transaction(async (tx) => {
-  await softDelete(tx, "Campaign", { where: { id, tenantId }, actorId: user.firebaseUid });
-});
+// Core service (e.g. CampaignService.delete) — thin wrapper that
+// preserves NotFound semantics and forwards actorId.
+async delete(tenantId: string, id: string, actorId: string | null) {
+  await this.getById(tenantId, id);
+  return this.campaignRepository.softDelete(tenantId, id, actorId);
+}
 
-// Restore + cascade restore for children that were cascade-deleted by THIS parent
-await prisma.$transaction(async (tx) => {
-  await restore(tx, "Campaign", { where: { id, tenantId } });
-});
+// Core repository (e.g. CampaignRepository.softDelete) — the only place
+// the helper is called. Returns the tombstone via withDeleted so the
+// caller can audit by id.
+async softDelete(tenantId: string, id: string, actorId: string | null) {
+  return this.prisma.$transaction(async (tx) => {
+    await softDelete(tx, "Campaign", { where: { id, tenantId }, actorId });
+    return tx.campaign.findFirstOrThrow(
+      withDeleted("Campaign", { where: { id, tenantId } }),
+    );
+  });
+}
 ```
+
+The `restore` flow mirrors this. Restore-capable entities (Campaign,
+Tenant) also expose `service.restore(tenantId, id)` →
+`repository.restore(tenantId, id)` → `restore(tx, "Model", { where })`.
 
 Cascade discovery reads `@relation(..., onDelete: Cascade)` declarations
 directly from the `.prisma` schema files at startup (Prisma 7 strips
@@ -812,8 +863,13 @@ where the schema files live, or include `prisma/schema/` in the image.
 3. If the model is a composition child of another soft-deletable model,
    add `onDelete: Cascade` to the `@relation` — the extension will pick
    it up automatically.
-4. Wire any soft-delete handler in the feature service to call the
-   `softDelete` / `restore` helpers inside `$transaction`.
+4. Add a `softDelete(tenantId, id, actorId)` method to the entity's
+   repository that calls the helper inside `$transaction` and returns
+   the tombstone via `withDeleted`. Expose
+   `delete(tenantId, id, actorId)` on the core service that calls
+   `getById` first (for NotFound semantics) then forwards to the repo.
+5. Feature handlers call `entityService.delete(..., user.firebaseUid)`
+   and pass the returned row to the audit record.
 
 #### Anti-patterns
 
@@ -823,13 +879,33 @@ where the schema files live, or include `prisma/schema/` in the image.
 - ❌ Using `upsert` to "find or restore" an archived row — upsert
   creates a fresh row in the freed slot (partial unique allows it).
   Restore the tombstone explicitly to preserve linked history.
-- ❌ Per-repo soft-delete implementations — the extension is the source
-  of truth.
+- ❌ Hand-rolling soft-delete with `prisma.x.update({ data: { deletedAt: dayjs().toDate() } })` —
+  it skips the cascade, skips `deletedBy`/`deletedByCascade`, and is
+  blocked by the extension once the row is a tombstone. Use the repo's
+  `softDelete` method, which wraps the cascade-aware helper.
+- ❌ Calling the `softDelete` / `restore` helpers from a feature or
+  process service. The helpers belong to the repository layer; features
+  invoke them through `entityService.delete(...)` /
+  `entityService.restore(...)`. Same rule for `withDeleted` — wrap it
+  in a repo method (e.g. `findByIdIncludingDeleted`) and expose that
+  through the service.
+- ❌ Forgetting to thread `actorId` through `service.delete(...)` —
+  `deletedBy` will be `NULL` on the tombstone. Pull `user.firebaseUid`
+  from `@CurrentUser()` and pass it down.
+- ❌ Stamping `deletedAt: null` into a read `where` clause. The
+  extension already injects it at every nesting depth (including
+  `AND`/`OR`/`NOT`, `some`/`every`/`none`, and relation predicates
+  inside `where`). Manual filters are noise — and inviting them invites
+  authors to *not* add them next time, which silently leaks
+  tombstones.
 - ❌ Threading `deletedAt: undefined` through 4 levels of nested
   `include` by hand — use `withDeleted(modelName, args)` instead.
 - ❌ Assuming `pledge.campaign` is non-null at runtime when the
   campaign might be archived. Required to-one relations surface
   tombstones; check `pledge.campaign.deletedAt`.
+- ❌ Using `$queryRaw` for aggregates over soft-deletable tables —
+  raw SQL bypasses the extension entirely and will return tombstones.
+  Use `groupBy` / `aggregate` / `findMany`-plus-JS-bucket instead.
 
 ### 8.4 Tenant scoping
 
@@ -1043,14 +1119,16 @@ refresh.
 | Core service imports another core service | Lift the join to a feature or process |
 | `class-validator` decorators on `<entity>.types.ts` | Move to the feature request DTO |
 | Prisma types (`Prisma.XxxWhereInput`) outside a repository | Move to the repository, expose a plain interface |
-| Controller calls `prismaService.xxx` directly | Route through core service → repository |
+| Controller, feature, or core service calls `prismaService.xxx` directly | Route through core service → repository. Data access lives only in repositories (or in narrowly-scoped infra services that can't import Core, see §6.1) |
+| Hand-stamping `deletedAt: null` / `tenant: { deletedAt: null }` into a where clause | Remove it — the soft-delete extension auto-injects at every nesting depth (§8.3) |
+| Soft-deleting via `prisma.x.update({ data: { deletedAt: dayjs().toDate() } })` | Call `entityService.delete(tenantId, id, actorId)` — the repo wraps the cascade-aware helper (§8.3) |
+| `$queryRaw` over soft-deletable tables | Raw SQL bypasses the extension and returns tombstones; use `groupBy` / `aggregate` / `findMany`-plus-JS-bucket |
 | Handler without `@ApiOperation` or response decorator | Add them — OpenAPI contract is incomplete otherwise |
 | Reading `tenant.role` outside `ability.factory.ts` | Use `assertCan(ability, action, subject)` instead |
 | Per-role helpers in services (`ensureMemberVisibility`, `assertAdminOrSuperAdmin`) | Move the rule into `ability.factory.ts`; controllers call `assertCan` |
 | `@TenantRoles` decorators on intent-split controllers | The URL path + CASL covers it — drop the decorator |
 | Putting an admin-management endpoint under `controllers/self/` (or vice versa) | Intent declares scope; pick the folder that matches the *URL meaning*, not the caller's role |
 | Self-controller request DTO accepts `memberId` | Self DTOs MUST omit it; `memberId` comes from `tenant.memberId` |
-| Read query without `deletedAt: null` filter | Add the filter |
 | Tenant-scoped endpoint that doesn't filter by `tenantId` | Add the filter — this is a security bug |
 | Trusting `campaignId`/`campaignItemId` from the client when `pledgeId` is also set | Always resolve via the pledge; reject mismatches (see `TransactionFeatureService.resolveAttribution`) |
 | `Transaction.campaignItemId` without `campaignId` | Reject — an item without its campaign is meaningless |
@@ -1093,7 +1171,11 @@ Before you save changes:
 3. Do new controllers/handlers have `@ApiOperation` + response decorator + role decorator?
 4. Are new schema changes reflected in the shared DTO?
 5. Did you add/update examples in `dto-examples.ts`?
-6. Did you forget `deletedAt: null` on a read query?
+6. Did you add `this.prisma.*` to a service? (Move it to a repo.)
+   Did you hand-stamp `deletedAt: null` into a where clause? (Drop it —
+   the extension auto-injects.) For soft-deletes, did you go through
+   `entityService.delete(tenantId, id, actorId)` rather than calling
+   the helper or `prisma.update` directly?
 7. Did you forget `tenantId` on a tenant-scoped query?
 8. Did you run `npm run prisma:generate` after editing the schema?
 

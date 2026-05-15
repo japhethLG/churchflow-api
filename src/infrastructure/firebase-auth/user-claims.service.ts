@@ -35,7 +35,7 @@ export class UserClaimsService {
 		}
 
 		const members = await this.prisma.member.findMany({
-			where: { userId: user.id, deletedAt: null, tenant: { deletedAt: null } },
+			where: { userId: user.id },
 			include: { tenant: { select: { slug: true, name: true } } },
 		});
 

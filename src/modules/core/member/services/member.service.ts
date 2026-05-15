@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 
-import { Member } from "@prisma/client";
+import { Member, MemberRole } from "@prisma/client";
 
 import {
 	CreateMemberInput,
@@ -8,8 +8,10 @@ import {
 	UpdateMemberInput,
 } from "../member.types";
 import {
+	MemberAdminPreview,
 	MemberListResult,
 	MemberRepository,
+	MemberWithTenantInfo,
 } from "../repository/member.repository";
 
 @Injectable()
@@ -48,9 +50,37 @@ export class MemberService {
 		return this.memberRepository.update(tenantId, id, data);
 	}
 
-	async delete(tenantId: string, id: string): Promise<Member> {
+	async delete(
+		tenantId: string,
+		id: string,
+		actorId: string | null,
+	): Promise<Member> {
 		await this.getById(tenantId, id);
-		return this.memberRepository.softDelete(tenantId, id);
+		return this.memberRepository.softDelete(tenantId, id, actorId);
+	}
+
+	async countForTenant(
+		tenantId: string,
+		filters: { role?: MemberRole; createdSince?: Date } = {},
+	): Promise<number> {
+		return this.memberRepository.countForTenant(tenantId, filters);
+	}
+
+	async countAcrossTenants(
+		filters: { role?: MemberRole; createdSince?: Date } = {},
+	): Promise<number> {
+		return this.memberRepository.countAcrossTenants(filters);
+	}
+
+	async getAdminsPreview(
+		tenantId: string,
+		take: number,
+	): Promise<MemberAdminPreview[]> {
+		return this.memberRepository.findAdminsPreview(tenantId, take);
+	}
+
+	async getAllForUser(userId: string): Promise<MemberWithTenantInfo[]> {
+		return this.memberRepository.findAllForUserWithTenants(userId);
 	}
 
 	async linkUser(

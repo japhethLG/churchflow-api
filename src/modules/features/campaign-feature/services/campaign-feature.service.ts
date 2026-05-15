@@ -145,7 +145,11 @@ export class CampaignFeatureService {
 		tenant: TenantContext,
 		id: string,
 	): Promise<Campaign> {
-		const campaign = await this.campaignService.delete(tenant.tenantId, id);
+		const campaign = await this.campaignService.delete(
+			tenant.tenantId,
+			id,
+			user.firebaseUid,
+		);
 		await this.auditService.record({
 			tenantId: tenant.tenantId,
 			actorUid: user.firebaseUid,
@@ -204,6 +208,7 @@ export class CampaignFeatureService {
 	}
 
 	async deleteItem(
+		user: AuthUser,
 		tenant: TenantContext,
 		campaignId: string,
 		itemId: string,
@@ -215,7 +220,11 @@ export class CampaignFeatureService {
 		if (item.campaignId !== campaignId) {
 			throw new BadRequestException("Item does not belong to this campaign");
 		}
-		return this.campaignItemService.delete(tenant.tenantId, itemId);
+		return this.campaignItemService.delete(
+			tenant.tenantId,
+			itemId,
+			user.firebaseUid,
+		);
 	}
 
 	// Per-campaign progress summary: goal (sum of items), pledged totals,

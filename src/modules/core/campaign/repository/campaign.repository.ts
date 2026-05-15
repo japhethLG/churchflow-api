@@ -1,7 +1,11 @@
 import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
+import {
+	restore,
+	softDelete,
+	withDeleted,
+} from "@infrastructure/prisma-client/soft-delete";
 import { Injectable } from "@nestjs/common";
 import { Campaign, Prisma } from "@prisma/client";
-import dayjs from "@shared/dayjs";
 
 import {
 	CampaignFilters,
@@ -24,8 +28,17 @@ export class CampaignRepository {
 
 	async findById(tenantId: string, id: string): Promise<Campaign | null> {
 		return this.prisma.campaign.findFirst({
-			where: { id, tenantId, deletedAt: null },
+			where: { id, tenantId },
 		});
+	}
+
+	async findByIdIncludingDeleted(
+		tenantId: string,
+		id: string,
+	): Promise<Campaign | null> {
+		return this.prisma.campaign.findFirst(
+			withDeleted("Campaign", { where: { id, tenantId } }),
+		);
 	}
 
 	async findAll(
@@ -34,7 +47,6 @@ export class CampaignRepository {
 	): Promise<CampaignListResult> {
 		const where: Prisma.CampaignWhereInput = {
 			tenantId,
-			deletedAt: null,
 			...(filters.status ? { status: filters.status } : {}),
 		};
 
@@ -59,25 +71,33 @@ export class CampaignRepository {
 		return this.prisma.campaign.update({ where: { id }, data });
 	}
 
-	async softDelete(_tenantId: string, id: string): Promise<Campaign> {
-		return this.prisma.campaign.update({
-			where: { id },
-			data: { deletedAt: dayjs().toDate() },
-		});
-	}
-
-	async restore(_tenantId: string, id: string): Promise<Campaign> {
-		return this.prisma.campaign.update({
-			where: { id },
-			data: { deletedAt: null },
-		});
-	}
-
-	async findByIdIncludingDeleted(
+	// Cascade-soft-deletes the campaign and its CampaignItems
+	// (composition relation, `onDelete: Cascade` in the schema). Returns the
+	// tombstone.
+	async softDelete(
 		tenantId: string,
 		id: string,
-	): Promise<Campaign | null> {
-		return this.prisma.campaign.findFirst({ where: { id, tenantId } });
+		actorId: string | null,
+	): Promise<Campaign> {
+		return this.prisma.$transaction(async (tx) => {
+			await softDelete(tx, "Campaign", {
+				where: { id, tenantId },
+				actorId,
+			});
+			return tx.campaign.findFirstOrThrow(
+				withDeleted("Campaign", { where: { id, tenantId } }),
+			);
+		});
+	}
+
+	// Symmetric restore — only items archived as part of THIS parent's
+	// cascade come back. Items the admin had archived independently stay
+	// archived.
+	async restore(tenantId: string, id: string): Promise<Campaign> {
+		return this.prisma.$transaction(async (tx) => {
+			await restore(tx, "Campaign", { where: { id, tenantId } });
+			return tx.campaign.findFirstOrThrow({ where: { id, tenantId } });
+		});
 	}
 
 	// Per-campaign progress: pledge totals + transaction totals, both overall
@@ -85,23 +105,23 @@ export class CampaignRepository {
 	async progress(tenantId: string, campaignId: string) {
 		const [pledgeAgg, txAgg, itemPledgeAgg, itemTxAgg] = await Promise.all([
 			this.prisma.pledge.aggregate({
-				where: { tenantId, campaignId, deletedAt: null },
+				where: { tenantId, campaignId },
 				_sum: { pledgedAmount: true },
 				_count: { _all: true },
 			}),
 			this.prisma.transaction.aggregate({
-				where: { tenantId, campaignId, deletedAt: null },
+				where: { tenantId, campaignId },
 				_sum: { amount: true },
 			}),
 			this.prisma.pledge.groupBy({
 				by: ["campaignItemId"],
-				where: { tenantId, campaignId, deletedAt: null },
+				where: { tenantId, campaignId },
 				_sum: { pledgedAmount: true },
 				_count: { _all: true },
 			}),
 			this.prisma.transaction.groupBy({
 				by: ["campaignItemId"],
-				where: { tenantId, campaignId, deletedAt: null },
+				where: { tenantId, campaignId },
 				_sum: { amount: true },
 			}),
 		]);

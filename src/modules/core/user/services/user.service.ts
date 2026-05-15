@@ -2,7 +2,11 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 
 import { User } from "@prisma/client";
 
-import { UserRepository } from "../repository/user.repository";
+import {
+	UserListFilters,
+	UserListWithMembershipsResult,
+	UserRepository,
+} from "../repository/user.repository";
 import { CreateUserInput, UpdateUserInput } from "../user.types";
 
 @Injectable()
@@ -49,5 +53,15 @@ export class UserService {
 			});
 		}
 		return this.userRepository.create(data);
+	}
+
+	async countSuperAdmins(): Promise<number> {
+		return this.userRepository.countSuperAdmins();
+	}
+
+	async listWithMemberships(
+		filters: UserListFilters,
+	): Promise<UserListWithMembershipsResult> {
+		return this.userRepository.findAndCountWithMemberships(filters);
 	}
 }

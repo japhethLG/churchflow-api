@@ -1,13 +1,33 @@
 import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
+import {
+	softDelete,
+	withDeleted,
+} from "@infrastructure/prisma-client/soft-delete";
 import { Injectable } from "@nestjs/common";
-import { Member, Prisma } from "@prisma/client";
-import dayjs from "@shared/dayjs";
+import { Member, MemberRole, Prisma } from "@prisma/client";
 
 import {
 	CreateMemberInput,
 	MemberFilters,
 	UpdateMemberInput,
 } from "../member.types";
+
+export interface MemberAdminPreview {
+	memberId: string;
+	firstName: string;
+	lastName: string;
+	displayName: string | null;
+	photoUrl: string | null;
+}
+
+export interface MemberWithTenantInfo {
+	memberId: string;
+	role: MemberRole;
+	tenantId: string;
+	tenantSlug: string;
+	tenantName: string;
+	createdAt: Date;
+}
 
 export interface MemberListResult {
 	items: Member[];
@@ -24,13 +44,13 @@ export class MemberRepository {
 
 	async findById(tenantId: string, id: string): Promise<Member | null> {
 		return this.prisma.member.findFirst({
-			where: { id, tenantId, deletedAt: null },
+			where: { id, tenantId },
 		});
 	}
 
 	async findByUserId(tenantId: string, userId: string): Promise<Member | null> {
 		return this.prisma.member.findFirst({
-			where: { tenantId, userId, deletedAt: null },
+			where: { tenantId, userId },
 		});
 	}
 
@@ -40,7 +60,6 @@ export class MemberRepository {
 	): Promise<MemberListResult> {
 		const where: Prisma.MemberWhereInput = {
 			tenantId,
-			deletedAt: null,
 			...(filters.status ? { status: filters.status } : {}),
 			...(filters.search
 				? {
@@ -74,10 +93,90 @@ export class MemberRepository {
 		return this.prisma.member.update({ where: { id }, data });
 	}
 
-	async softDelete(_tenantId: string, id: string): Promise<Member> {
-		return this.prisma.member.update({
-			where: { id },
-			data: { deletedAt: dayjs().toDate() },
+	// Tenant-scoped count. Pass `role` to narrow to a single role bucket.
+	async countForTenant(
+		tenantId: string,
+		filters: { role?: MemberRole; createdSince?: Date } = {},
+	): Promise<number> {
+		return this.prisma.member.count({
+			where: {
+				tenantId,
+				...(filters.role ? { role: filters.role } : {}),
+				...(filters.createdSince
+					? { createdAt: { gte: filters.createdSince } }
+					: {}),
+			},
+		});
+	}
+
+	// Cross-tenant count for platform stats.
+	async countAcrossTenants(
+		filters: { role?: MemberRole; createdSince?: Date } = {},
+	): Promise<number> {
+		return this.prisma.member.count({
+			where: {
+				...(filters.role ? { role: filters.role } : {}),
+				...(filters.createdSince
+					? { createdAt: { gte: filters.createdSince } }
+					: {}),
+			},
+		});
+	}
+
+	// Top-N admins of a tenant, joined to user for the display preview.
+	// Used by the super-admin tenant list.
+	async findAdminsPreview(
+		tenantId: string,
+		take: number,
+	): Promise<MemberAdminPreview[]> {
+		const admins = await this.prisma.member.findMany({
+			where: { tenantId, role: MemberRole.ADMIN },
+			include: { user: { select: { displayName: true, photoUrl: true } } },
+			orderBy: { createdAt: "asc" },
+			take,
+		});
+		return admins.map((m) => ({
+			memberId: m.id,
+			firstName: m.firstName,
+			lastName: m.lastName,
+			displayName: m.user?.displayName ?? null,
+			photoUrl: m.user?.photoUrl ?? null,
+		}));
+	}
+
+	// Every active membership for a given user, joined to tenant for the
+	// display name + slug. Used by super-admin user-management.
+	async findAllForUserWithTenants(
+		userId: string,
+	): Promise<MemberWithTenantInfo[]> {
+		const rows = await this.prisma.member.findMany({
+			where: { userId },
+			include: { tenant: { select: { id: true, slug: true, name: true } } },
+			orderBy: { createdAt: "asc" },
+		});
+		return rows.map((m) => ({
+			memberId: m.id,
+			role: m.role,
+			tenantId: m.tenant.id,
+			tenantSlug: m.tenant.slug,
+			tenantName: m.tenant.name,
+			createdAt: m.createdAt,
+		}));
+	}
+
+	async softDelete(
+		tenantId: string,
+		id: string,
+		actorId: string | null,
+	): Promise<Member> {
+		return this.prisma.$transaction(async (tx) => {
+			await softDelete(tx, "Member", {
+				where: { id, tenantId },
+				actorId,
+			});
+			return tx.member.findFirstOrThrow(
+				withDeleted("Member", { where: { id, tenantId } }),
+			);
 		});
 	}
 }

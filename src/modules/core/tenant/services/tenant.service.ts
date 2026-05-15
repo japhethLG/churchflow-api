@@ -67,6 +67,20 @@ export class TenantService {
 		return this.tenantRepository.findAll();
 	}
 
+	async countAll(): Promise<number> {
+		return this.tenantRepository.countAll();
+	}
+
+	async countCreatedSince(since: Date): Promise<number> {
+		return this.tenantRepository.countCreatedSince(since);
+	}
+
+	// Includes tombstones — for super-admin views that need to surface and
+	// restore archived tenants.
+	async getAllIncludingDeleted(): Promise<Tenant[]> {
+		return this.tenantRepository.findAllIncludingDeleted();
+	}
+
 	async getAllForUser(userId: string) {
 		return this.tenantRepository.findAllForUser(userId);
 	}
@@ -85,14 +99,18 @@ export class TenantService {
 		return this.tenantRepository.updateSlug(id, newSlug);
 	}
 
-	async delete(id: string): Promise<Tenant> {
+	async delete(id: string, actorId: string | null): Promise<Tenant> {
 		await this.getById(id);
-		return this.tenantRepository.softDelete(id);
+		return this.tenantRepository.softDelete(id, actorId);
 	}
 
 	async restore(id: string): Promise<Tenant> {
-		const existing = await this.tenantRepository.findByIdOrSlug(id);
-		if (existing) {
+		const existing = await this.tenantRepository.findByIdIncludingDeleted(id);
+		if (!existing) {
+			throw new NotFoundException(`Tenant not found: ${id}`);
+		}
+		// Idempotent: if already active, return it.
+		if (!existing.deletedAt) {
 			return existing;
 		}
 		return this.tenantRepository.restore(id);

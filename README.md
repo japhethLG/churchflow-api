@@ -325,27 +325,42 @@ Every soft-deletable entity has `deletedAt` / `deletedBy` /
 `deletedByCascade` columns. A Prisma extension at
 [`src/infrastructure/prisma-client/soft-delete/`](src/infrastructure/prisma-client/soft-delete/)
 filters tombstones from every read by default (top-level reads, relation
-includes, `_count`, relation predicates inside `where`), blocks writes
-against tombstoned rows, and provides `softDelete` / `restore` helpers
-that cascade through composition relations (declared via
-`@relation(onDelete: Cascade)`).
+includes, `_count`, relation predicates inside `where` — including
+`AND`/`OR`/`NOT` and `some`/`every`/`none`), and blocks writes against
+tombstoned rows.
+
+Soft-delete operations live in the repository layer. Each soft-deletable
+entity exposes a three-layer flow:
+
+```text
+Feature service           → entityService.delete(tenantId, id, user.firebaseUid)
+Core service              → entityRepository.softDelete(tenantId, id, actorId)
+Core repository           → wraps softDelete(tx, "Model", { where, actorId }) in $transaction
+```
+
+The repo's `softDelete` cascades through composition relations
+(`@relation(onDelete: Cascade)`) and stamps `deletedBy` /
+`deletedByCascade`. `restore` mirrors this and undoes only the
+cascade-deleted descendants, preserving independently-archived rows.
 
 To opt back in to tombstones — for historical views, receipts, audit
-queries — use the `withDeleted` helper:
+queries — wrap the read in `withDeleted` inside a repo method:
 
 ```ts
-import { withDeleted } from "@infrastructure/prisma-client/soft-delete";
-
-const members = await prisma.member.findMany(
-  withDeleted("Member", {
-    where: { tenantId },
-    include: { pledges: { include: { campaign: true } } },
-  }),
-);
+// In your repository — features/services don't call withDeleted directly.
+async findManyIncludingDeleted(tenantId: string) {
+  return this.prisma.member.findMany(
+    withDeleted("Member", {
+      where: { tenantId },
+      include: { pledges: { include: { campaign: true } } },
+    }),
+  );
+}
 ```
 
 See [CLAUDE.md §8.3](CLAUDE.md) for the full design (Prisma constraints,
-cascade semantics, partial unique indexes for slot reclamation, etc.).
+cascade semantics, partial unique indexes for slot reclamation,
+anti-patterns).
 
 ## Adding a new module
 

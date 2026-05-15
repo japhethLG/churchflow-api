@@ -46,9 +46,13 @@ export class PledgeService {
 		return this.getById(tenantId, id);
 	}
 
-	async delete(tenantId: string, id: string): Promise<Pledge> {
+	async delete(
+		tenantId: string,
+		id: string,
+		actorId: string | null,
+	): Promise<Pledge> {
 		await this.getById(tenantId, id);
-		return this.pledgeRepository.softDelete(tenantId, id);
+		return this.pledgeRepository.softDelete(tenantId, id, actorId);
 	}
 
 	async reassignMember(

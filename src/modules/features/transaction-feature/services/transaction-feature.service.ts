@@ -2,7 +2,6 @@ import {
 	AuthUser,
 	TenantContext,
 } from "@infrastructure/firebase-auth/types/auth-user.type";
-import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
 import { WriteAuditEventInput } from "@modules/core/audit/audit.types";
 import { AuditService } from "@modules/core/audit/services/audit.service";
 import { CampaignService } from "@modules/core/campaign/services/campaign.service";
@@ -18,10 +17,9 @@ import {
 	CreateTransactionInput,
 	TransactionFilters,
 } from "@modules/core/transaction/transaction.types";
-import { BadRequestException, Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import {
 	AuditAction,
-	type Prisma,
 	type Transaction,
 	type TransactionType,
 } from "@prisma/client";
@@ -60,8 +58,6 @@ export interface UpdateTransactionServiceInput {
 // controllers. The service focuses on attribution validation and audit.
 @Injectable()
 export class TransactionFeatureService {
-	private readonly logger = new Logger(TransactionFeatureService.name);
-
 	constructor(
 		private readonly transactionService: TransactionService,
 		private readonly memberService: MemberService,
@@ -69,7 +65,6 @@ export class TransactionFeatureService {
 		private readonly campaignItemService: CampaignItemService,
 		private readonly pledgeService: PledgeService,
 		private readonly auditService: AuditService,
-		private readonly prisma: PrismaClientService,
 	) {}
 
 	async record(
@@ -110,35 +105,7 @@ export class TransactionFeatureService {
 			}),
 		);
 
-		return this.prisma.$transaction(async (tx) => {
-			const created: Transaction[] = [];
-			for (const item of prepared) {
-				const row = await tx.transaction.create({ data: item.createInput });
-				const auditInput = item.buildAudit(row);
-				try {
-					await tx.auditEvent.create({
-						data: {
-							tenantId: auditInput.tenantId,
-							actorUid: auditInput.actorUid,
-							actorEmail: auditInput.actorEmail ?? null,
-							action: auditInput.action,
-							entity: auditInput.entity,
-							entityId: auditInput.entityId,
-							summary: auditInput.summary ?? null,
-							diff: (auditInput.diff ?? null) as Prisma.InputJsonValue,
-						},
-					});
-				} catch (err) {
-					// Mirror AuditService.record's swallow-and-log behaviour so
-					// an audit failure doesn't roll back the user's gifts.
-					this.logger.error(
-						`audit write failed inside bulk (entityId=${row.id}): ${(err as Error).message}`,
-					);
-				}
-				created.push(row);
-			}
-			return created;
-		});
+		return this.transactionService.createManyWithAudit(prepared);
 	}
 
 	// Validates a single create input and returns the create payload + a
@@ -218,7 +185,11 @@ export class TransactionFeatureService {
 		tenant: TenantContext,
 		id: string,
 	): Promise<Transaction> {
-		const tx = await this.transactionService.delete(tenant.tenantId, id);
+		const tx = await this.transactionService.delete(
+			tenant.tenantId,
+			id,
+			user.firebaseUid,
+		);
 		await this.auditService.record({
 			tenantId: tenant.tenantId,
 			actorUid: user.firebaseUid,
