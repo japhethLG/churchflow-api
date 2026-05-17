@@ -1,11 +1,11 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
+import { StateFilterRequestDto } from "@shared/dto/state-filter.request.dto";
 import {
 	BOOLEAN_EXAMPLE,
 	EMAIL_EXAMPLE,
 	ID_EXAMPLE,
 	INT_EXAMPLE,
 } from "@shared/dto-examples";
-import { StateFilterRequestDto } from "@shared/dto/state-filter.request.dto";
 import { Type } from "class-transformer";
 import {
 	IsBoolean,

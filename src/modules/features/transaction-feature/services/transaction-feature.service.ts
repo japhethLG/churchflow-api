@@ -245,10 +245,7 @@ export class TransactionFeatureService {
 		const resolvedTo =
 			dateTo ?? (dateFrom ? now.endOf("month").toDate() : null);
 		const resolvedFrom =
-			dateFrom ??
-			(dateTo
-				? dayjs.utc(dateTo).startOf("month").toDate()
-				: null);
+			dateFrom ?? (dateTo ? dayjs.utc(dateTo).startOf("month").toDate() : null);
 
 		if (resolvedFrom && resolvedTo) {
 			return this.transactionService.summary(

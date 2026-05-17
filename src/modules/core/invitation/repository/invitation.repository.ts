@@ -3,10 +3,7 @@ import { Injectable } from "@nestjs/common";
 import { type Invitation, InvitationStatus, Prisma } from "@prisma/client";
 import dayjs from "@shared/dayjs";
 
-import {
-	CreateInvitationInput,
-	InvitationFilters,
-} from "../invitation.types";
+import { CreateInvitationInput, InvitationFilters } from "../invitation.types";
 
 export interface InvitationListResult {
 	items: Invitation[];

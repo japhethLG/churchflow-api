@@ -85,14 +85,10 @@ export class UserRepository {
 			where.memberships = { some: { tenantId: filters.tenantId } };
 		}
 
-		const { where: scopedWhere, wrap } = applyStateFilter(
-			"User",
-			where,
-			{
-				includeDeleted: filters.includeDeleted,
-				onlyDeleted: filters.onlyDeleted,
-			},
-		);
+		const { where: scopedWhere, wrap } = applyStateFilter("User", where, {
+			includeDeleted: filters.includeDeleted,
+			onlyDeleted: filters.onlyDeleted,
+		});
 
 		const [users, total] = await Promise.all([
 			this.prisma.user.findMany(

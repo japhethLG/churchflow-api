@@ -2,10 +2,7 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 
 import { Invitation } from "@prisma/client";
 
-import {
-	CreateInvitationInput,
-	InvitationFilters,
-} from "../invitation.types";
+import { CreateInvitationInput, InvitationFilters } from "../invitation.types";
 import {
 	InvitationListResult,
 	InvitationRepository,
