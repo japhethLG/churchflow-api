@@ -3,6 +3,7 @@ import { CampaignCoreModule } from "@modules/core/campaign/campaign.module";
 import { CampaignItemCoreModule } from "@modules/core/campaign-item/campaign-item.module";
 import { MemberCoreModule } from "@modules/core/member/member.module";
 import { PledgeCoreModule } from "@modules/core/pledge/pledge.module";
+import { UserCoreModule } from "@modules/core/user/user.module";
 import { Module } from "@nestjs/common";
 
 import { PledgeSelfController } from "./controllers/self";
@@ -15,6 +16,7 @@ import { PledgeFeatureService } from "./services/pledge-feature.service";
 		CampaignCoreModule,
 		CampaignItemCoreModule,
 		MemberCoreModule,
+		UserCoreModule,
 		AuditCoreModule,
 	],
 	controllers: [PledgeTenantController, PledgeSelfController],

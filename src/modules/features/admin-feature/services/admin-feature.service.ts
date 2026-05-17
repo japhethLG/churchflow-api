@@ -21,6 +21,8 @@ export interface AdminUsersQueryInput {
 	superAdminOnly?: boolean;
 	skip?: number;
 	take?: number;
+	includeDeleted?: boolean;
+	onlyDeleted?: boolean;
 }
 
 export interface ToggleSuperAdminInput {
@@ -73,8 +75,10 @@ export class AdminFeatureService {
 	) {}
 
 	async getPlatformStats(): Promise<PlatformStats> {
-		const monthStart = dayjs().startOf("month").toDate();
-		const last30d = dayjs().subtract(30, "day").toDate();
+		// Anchor "this month" in UTC so the cutoff doesn't drift when the
+		// process happens to run in a non-UTC container.
+		const monthStart = dayjs.utc().startOf("month").toDate();
+		const last30d = dayjs.utc().subtract(30, "day").toDate();
 
 		const [
 			totalTenants,
@@ -113,6 +117,8 @@ export class AdminFeatureService {
 			superAdminOnly: query.superAdminOnly,
 			skip: query.skip,
 			take: query.take,
+			includeDeleted: query.includeDeleted,
+			onlyDeleted: query.onlyDeleted,
 		});
 
 		const users: AdminUser[] = items.map(({ user, memberships }) => ({

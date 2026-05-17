@@ -1,13 +1,18 @@
 import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
 import {
+	applyStateFilter,
 	restore,
 	softDelete,
 	withDeleted,
 } from "@infrastructure/prisma-client/soft-delete";
 import { Injectable } from "@nestjs/common";
-import { Tenant } from "@prisma/client";
+import { Prisma, Tenant } from "@prisma/client";
 
-import { CreateTenantInput, UpdateTenantInput } from "../tenant.types";
+import {
+	CreateTenantInput,
+	TenantFilters,
+	UpdateTenantInput,
+} from "../tenant.types";
 
 @Injectable()
 export class TenantRepository {
@@ -36,10 +41,15 @@ export class TenantRepository {
 		});
 	}
 
-	async findAll(): Promise<Tenant[]> {
-		return this.prisma.tenant.findMany({
-			orderBy: { createdAt: "desc" },
-		});
+	async findAll(filters: TenantFilters = {}): Promise<Tenant[]> {
+		const { where, wrap } = applyStateFilter(
+			"Tenant",
+			{} as Prisma.TenantWhereInput,
+			filters,
+		);
+		return this.prisma.tenant.findMany(
+			wrap({ where, orderBy: { createdAt: "desc" as const } }),
+		);
 	}
 
 	async countAll(): Promise<number> {

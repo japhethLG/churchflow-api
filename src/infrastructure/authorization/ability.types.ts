@@ -31,7 +31,13 @@ export type AppSubjects =
 
 // Action wildcard `manage` matches every other action and is granted to
 // super-admins.
-export type Actions = "manage" | "create" | "read" | "update" | "delete";
+export type Actions =
+	| "manage"
+	| "create"
+	| "read"
+	| "update"
+	| "delete"
+	| "restore";
 
 // Single application-wide ability type. Every guard, decorator and service
 // uses this exact alias so changes propagate cleanly.

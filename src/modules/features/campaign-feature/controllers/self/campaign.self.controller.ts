@@ -13,6 +13,7 @@ import {
 	ApiOkResponse,
 	ApiOperation,
 	ApiParam,
+	ApiQuery,
 	ApiTags,
 } from "@nestjs/swagger";
 
@@ -62,13 +63,23 @@ export class CampaignSelfController {
 
 	@Get(":id")
 	@ApiOperation({ summary: "Get a campaign with its items (member view)" })
+	@ApiQuery({
+		name: "includeDeleted",
+		required: false,
+		type: Boolean,
+		description:
+			"Include the campaign and its items even if archived. Members navigate to a deleted campaign from a pledge/transaction reference to render the read-only banner.",
+	})
 	@ApiOkResponse({ type: MyCampaignWithItemsResponseDto })
 	async getById(
 		@CurrentTenant() tenant: TenantContext,
 		@CurrentAbility() ability: AppAbility,
 		@Param("id") id: string,
+		@Query("includeDeleted") includeDeleted?: boolean,
 	): Promise<MyCampaignWithItemsResponseDto> {
-		const campaign = await this.campaignFeatureService.getById(tenant, id);
+		const campaign = await this.campaignFeatureService.getById(tenant, id, {
+			includeDeleted,
+		});
 		assertCan(ability, "read", asSubject("Campaign", campaign));
 		return campaign as unknown as MyCampaignWithItemsResponseDto;
 	}

@@ -18,6 +18,7 @@ import {
 	Param,
 	Patch,
 	Post,
+	Query,
 	UseGuards,
 } from "@nestjs/common";
 import {
@@ -29,7 +30,10 @@ import {
 	ApiTags,
 } from "@nestjs/swagger";
 
-import { IssueInvitationRequestDto } from "./requests";
+import {
+	InvitationFiltersRequestDto,
+	IssueInvitationRequestDto,
+} from "./requests";
 import { InvitationListResponseDto, InvitationResponseDto } from "./responses";
 
 // Tenant-management intent for invitations. Admins issue, list and cancel
@@ -68,16 +72,35 @@ export class InvitationTenantController {
 
 	@Get()
 	@ApiOperation({
-		summary: "List pending invitations for a tenant (admin only)",
+		summary: "List invitations for a tenant (admin only)",
+		description:
+			"All statuses are returned by default — filter by status, role, " +
+			"date range, or invitee email substring. Newest first.",
 	})
 	@ApiOkResponse({ type: InvitationListResponseDto })
 	async list(
 		@CurrentTenant() tenant: TenantContext,
 		@CurrentAbility() ability: AppAbility,
+		@Query() filters: InvitationFiltersRequestDto,
 	): Promise<InvitationListResponseDto> {
 		assertCan(ability, "read", "Invitation");
-		const items = await this.invitationProcessing.listPending(tenant.tenantId);
-		return { items: items as unknown as InvitationResponseDto[] };
+		const result = await this.invitationProcessing.list(tenant.tenantId, {
+			status: filters.status,
+			role: filters.role,
+			search: filters.search,
+			dateFrom: filters.dateFrom,
+			dateTo: filters.dateTo,
+			offset: filters.offset,
+			limit: filters.limit,
+		});
+		return {
+			items: result.items as unknown as InvitationResponseDto[],
+			meta: {
+				offset: filters.offset ?? 0,
+				limit: filters.limit ?? result.items.length,
+				total: result.total,
+			},
+		};
 	}
 
 	@Patch(":invitationId/cancel")

@@ -1,5 +1,7 @@
 import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
 import {
+	applyStateFilter,
+	restore,
 	softDelete,
 	withDeleted,
 } from "@infrastructure/prisma-client/soft-delete";
@@ -120,21 +122,39 @@ export class TransactionRepository {
 		});
 	}
 
+	async findByIdIncludingDeleted(
+		tenantId: string,
+		id: string,
+	): Promise<Transaction | null> {
+		return this.prisma.transaction.findFirst(
+			withDeleted("Transaction", { where: { id, tenantId } }),
+		);
+	}
+
 	async findAll(
 		tenantId: string,
 		filters: TransactionFilters,
 	): Promise<TransactionListResult> {
-		const where = this.buildWhere(tenantId, filters);
+		const baseWhere = this.buildWhere(tenantId, filters);
+		const { where, wrap } = applyStateFilter(
+			"Transaction",
+			baseWhere as Record<string, unknown>,
+			filters,
+		);
 
 		const [items, total, aggregate] = await Promise.all([
-			this.prisma.transaction.findMany({
-				where,
-				orderBy: { date: "desc" },
-				skip: filters.offset,
-				take: filters.limit,
-			}),
-			this.prisma.transaction.count({ where }),
-			this.prisma.transaction.aggregate({ where, _sum: { amount: true } }),
+			this.prisma.transaction.findMany(
+				wrap({
+					where,
+					orderBy: { date: "desc" as const },
+					skip: filters.offset,
+					take: filters.limit,
+				}),
+			),
+			this.prisma.transaction.count(wrap({ where })),
+			this.prisma.transaction.aggregate(
+				wrap({ where, _sum: { amount: true as const } }),
+			),
 		]);
 
 		return { items, total, sum: Number(aggregate._sum.amount ?? 0) };
@@ -217,6 +237,13 @@ export class TransactionRepository {
 			return tx.transaction.findFirstOrThrow(
 				withDeleted("Transaction", { where: { id, tenantId } }),
 			);
+		});
+	}
+
+	async restore(tenantId: string, id: string): Promise<Transaction> {
+		return this.prisma.$transaction(async (tx) => {
+			await restore(tx, "Transaction", { where: { id, tenantId } });
+			return tx.transaction.findFirstOrThrow({ where: { id, tenantId } });
 		});
 	}
 

@@ -57,4 +57,20 @@ export class CampaignDto {
 	@Expose()
 	@ApiPropertyOptional({ example: DATE_UTC_EXAMPLE, nullable: true })
 	deletedAt!: Date | null;
+
+	@Expose()
+	@ApiPropertyOptional({
+		example: ID_EXAMPLE,
+		nullable: true,
+		description:
+			"Internal User.id of the actor who soft-deleted this row (FK to User). Null when the row was deleted before this column existed, or by a system actor that has no User record.",
+	})
+	deletedBy!: string | null;
+
+	@Expose()
+	@ApiProperty({
+		example: false,
+		description: "True when this row was soft-deleted by a parent cascade",
+	})
+	deletedByCascade!: boolean;
 }

@@ -5,6 +5,7 @@ import {
 	ID_EXAMPLE,
 	INT_EXAMPLE,
 } from "@shared/dto-examples";
+import { StateFilterRequestDto } from "@shared/dto/state-filter.request.dto";
 import { Type } from "class-transformer";
 import {
 	IsBoolean,
@@ -15,7 +16,7 @@ import {
 	Min,
 } from "class-validator";
 
-export class AdminUsersQueryDto {
+export class AdminUsersQueryDto extends StateFilterRequestDto {
 	@ApiPropertyOptional({
 		example: EMAIL_EXAMPLE,
 		description: "Filter by email or displayName (case-insensitive)",

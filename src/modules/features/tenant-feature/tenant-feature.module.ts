@@ -2,6 +2,7 @@ import { AuditCoreModule } from "@modules/core/audit/audit.module";
 import { MemberCoreModule } from "@modules/core/member/member.module";
 import { TenantCoreModule } from "@modules/core/tenant/tenant.module";
 import { TransactionCoreModule } from "@modules/core/transaction/transaction.module";
+import { UserCoreModule } from "@modules/core/user/user.module";
 import { Module } from "@nestjs/common";
 
 import { TenantPlatformController } from "./controllers/platform";
@@ -14,6 +15,7 @@ import { TenantFeatureService } from "./services/tenant-feature.service";
 		TenantCoreModule,
 		MemberCoreModule,
 		TransactionCoreModule,
+		UserCoreModule,
 		AuditCoreModule,
 	],
 	controllers: [

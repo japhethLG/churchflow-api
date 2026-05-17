@@ -17,6 +17,7 @@ import {
 	CreateTransactionInput,
 	TransactionFilters,
 } from "@modules/core/transaction/transaction.types";
+import { UserService } from "@modules/core/user/services/user.service";
 import { BadRequestException, Injectable } from "@nestjs/common";
 import {
 	AuditAction,
@@ -64,6 +65,7 @@ export class TransactionFeatureService {
 		private readonly campaignService: CampaignService,
 		private readonly campaignItemService: CampaignItemService,
 		private readonly pledgeService: PledgeService,
+		private readonly userService: UserService,
 		private readonly auditService: AuditService,
 	) {}
 
@@ -153,8 +155,14 @@ export class TransactionFeatureService {
 		return this.transactionService.getAll(tenant.tenantId, filters);
 	}
 
-	async getById(tenant: TenantContext, id: string): Promise<Transaction> {
-		return this.transactionService.getById(tenant.tenantId, id);
+	async getById(
+		tenant: TenantContext,
+		id: string,
+		options: { includeDeleted?: boolean } = {},
+	): Promise<Transaction> {
+		return options.includeDeleted
+			? this.transactionService.getByIdIncludingDeleted(tenant.tenantId, id)
+			: this.transactionService.getById(tenant.tenantId, id);
 	}
 
 	async update(
@@ -185,10 +193,11 @@ export class TransactionFeatureService {
 		tenant: TenantContext,
 		id: string,
 	): Promise<Transaction> {
+		const actor = await this.userService.findByFirebaseUid(user.firebaseUid);
 		const tx = await this.transactionService.delete(
 			tenant.tenantId,
 			id,
-			user.firebaseUid,
+			actor?.id ?? null,
 		);
 		await this.auditService.record({
 			tenantId: tenant.tenantId,
@@ -201,22 +210,65 @@ export class TransactionFeatureService {
 		return tx;
 	}
 
-	// Aggregates for the admin dashboard. `months` defaults to 12 — the
-	// rolling window ends today (UTC) and starts N months back at the
-	// beginning of that month so the first bucket is always full.
+	async restore(
+		user: AuthUser,
+		tenant: TenantContext,
+		id: string,
+	): Promise<Transaction> {
+		const tx = await this.transactionService.restore(tenant.tenantId, id);
+		await this.auditService.record({
+			tenantId: tenant.tenantId,
+			actorUid: user.firebaseUid,
+			actorEmail: user.email,
+			action: AuditAction.RESTORE,
+			entity: "Transaction",
+			entityId: tx.id,
+		});
+		return tx;
+	}
+
+	// Aggregates for the admin dashboard.
+	// - If the caller passes an explicit `dateFrom` / `dateTo`, the bounds
+	//   are used verbatim. Either bound may be omitted: missing `dateFrom`
+	//   defaults to the start of `dateTo`'s month (or 12 months back if
+	//   `dateTo` is also missing); missing `dateTo` defaults to end-of-
+	//   month today.
+	// - Otherwise `months` (1..60, default 12) produces a rolling window
+	//   that ends today (UTC) and begins at the start of N months back so
+	//   the first month bucket is always full.
 	async summary(
 		tenant: TenantContext,
-		months?: number,
+		options: { dateFrom?: Date; dateTo?: Date; months?: number } = {},
 	): Promise<TransactionSummaryResult> {
-		const window = Math.max(1, Math.min(months ?? 12, 60));
+		const { dateFrom, dateTo, months } = options;
 		const now = dayjs.utc();
-		const dateTo = now.endOf("month").toDate();
-		const dateFrom = now
+		const resolvedTo =
+			dateTo ?? (dateFrom ? now.endOf("month").toDate() : null);
+		const resolvedFrom =
+			dateFrom ??
+			(dateTo
+				? dayjs.utc(dateTo).startOf("month").toDate()
+				: null);
+
+		if (resolvedFrom && resolvedTo) {
+			return this.transactionService.summary(
+				tenant.tenantId,
+				resolvedFrom,
+				resolvedTo,
+			);
+		}
+
+		const window = Math.max(1, Math.min(months ?? 12, 60));
+		const fallbackTo = now.endOf("month").toDate();
+		const fallbackFrom = now
 			.subtract(window - 1, "month")
 			.startOf("month")
 			.toDate();
-
-		return this.transactionService.summary(tenant.tenantId, dateFrom, dateTo);
+		return this.transactionService.summary(
+			tenant.tenantId,
+			fallbackFrom,
+			fallbackTo,
+		);
 	}
 
 	// Validates + normalizes campaignId / campaignItemId / pledgeId so that:

@@ -1,12 +1,20 @@
-import { ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiPropertyOptional, IntersectionType } from "@nestjs/swagger";
 import { PledgeStatus } from "@prisma/client";
+import { DateRangeRequestDto } from "@shared/dto/date-range.request.dto";
+import { PaginationRequestDto } from "@shared/dto/pagination.request.dto";
+import { StateFilterRequestDto } from "@shared/dto/state-filter.request.dto";
 import { ID_EXAMPLE } from "@shared/dto-examples";
-import { Type } from "class-transformer";
-import { IsEnum, IsInt, IsOptional, IsString, Min } from "class-validator";
+import { IsEnum, IsOptional, IsString } from "class-validator";
 
 // Tenant-wide filters. Admin can scope by any memberId; super-admin too.
 // Self-service uses my-pledge-filters.request.ts which omits memberId.
-export class PledgeFiltersRequestDto {
+// `dateFrom`/`dateTo` (inherited from DateRangeRequestDto) bracket
+// `createdAt` — Pledge has no separate `pledgedAt` column.
+export class PledgeFiltersRequestDto extends IntersectionType(
+	StateFilterRequestDto,
+	DateRangeRequestDto,
+	PaginationRequestDto,
+) {
 	@ApiPropertyOptional({ example: ID_EXAMPLE })
 	@IsOptional()
 	@IsString()
@@ -26,18 +34,4 @@ export class PledgeFiltersRequestDto {
 	@IsOptional()
 	@IsEnum(PledgeStatus)
 	status?: PledgeStatus;
-
-	@ApiPropertyOptional({ example: 0 })
-	@IsOptional()
-	@Type(() => Number)
-	@IsInt()
-	@Min(0)
-	offset?: number;
-
-	@ApiPropertyOptional({ example: 50 })
-	@IsOptional()
-	@Type(() => Number)
-	@IsInt()
-	@Min(1)
-	limit?: number;
 }

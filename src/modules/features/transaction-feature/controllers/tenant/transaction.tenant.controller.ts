@@ -28,6 +28,7 @@ import {
 	ApiOkResponse,
 	ApiOperation,
 	ApiParam,
+	ApiQuery,
 	ApiTags,
 } from "@nestjs/swagger";
 import { DeleteResponseDto } from "@shared/dto/delete-response.dto";
@@ -37,6 +38,7 @@ import {
 	BulkCreateTransactionsRequestDto,
 	CreateTransactionRequestDto,
 	TransactionFiltersRequestDto,
+	TransactionSummaryQueryRequestDto,
 	UpdateTransactionRequestDto,
 } from "./requests";
 import {
@@ -140,24 +142,35 @@ export class TransactionTenantController {
 	async summary(
 		@CurrentTenant() tenant: TenantContext,
 		@CurrentAbility() ability: AppAbility,
-		@Query("months") months?: string,
+		@Query() query: TransactionSummaryQueryRequestDto,
 	): Promise<TransactionSummaryResponseDto> {
 		assertCan(ability, "read", "Transaction");
-		return this.transactionFeatureService.summary(
-			tenant,
-			months ? Number(months) : undefined,
-		) as unknown as Promise<TransactionSummaryResponseDto>;
+		return this.transactionFeatureService.summary(tenant, {
+			dateFrom: query.dateFrom,
+			dateTo: query.dateTo,
+			months: query.months,
+		}) as unknown as Promise<TransactionSummaryResponseDto>;
 	}
 
 	@Get(":id")
 	@ApiOperation({ summary: "Get a transaction by id (admin only)" })
+	@ApiQuery({
+		name: "includeDeleted",
+		required: false,
+		type: Boolean,
+		description:
+			"Return the transaction even if soft-deleted (banner-style archived view).",
+	})
 	@ApiOkResponse({ type: TransactionResponseDto })
 	async getById(
 		@CurrentTenant() tenant: TenantContext,
 		@CurrentAbility() ability: AppAbility,
 		@Param("id") id: string,
+		@Query("includeDeleted") includeDeleted?: boolean,
 	): Promise<TransactionResponseDto> {
-		const tx = await this.transactionFeatureService.getById(tenant, id);
+		const tx = await this.transactionFeatureService.getById(tenant, id, {
+			includeDeleted,
+		});
 		assertCan(ability, "read", asSubject("Transaction", tx));
 		return tx as unknown as TransactionResponseDto;
 	}
@@ -199,5 +212,22 @@ export class TransactionTenantController {
 			id,
 		);
 		return { id: deleted.id };
+	}
+
+	@Post(":id/restore")
+	@ApiOperation({ summary: "Restore a soft-deleted transaction (admin only)" })
+	@ApiOkResponse({ type: TransactionResponseDto })
+	async restore(
+		@CurrentUser() user: AuthUser,
+		@CurrentTenant() tenant: TenantContext,
+		@CurrentAbility() ability: AppAbility,
+		@Param("id") id: string,
+	): Promise<TransactionResponseDto> {
+		assertCan(ability, "restore", "Transaction");
+		return this.transactionFeatureService.restore(
+			user,
+			tenant,
+			id,
+		) as unknown as Promise<TransactionResponseDto>;
 	}
 }

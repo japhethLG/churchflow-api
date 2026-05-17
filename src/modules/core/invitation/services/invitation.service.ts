@@ -2,8 +2,16 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 
 import { Invitation } from "@prisma/client";
 
-import { CreateInvitationInput } from "../invitation.types";
-import { InvitationRepository } from "../repository/invitation.repository";
+import {
+	CreateInvitationInput,
+	InvitationFilters,
+} from "../invitation.types";
+import {
+	InvitationListResult,
+	InvitationRepository,
+} from "../repository/invitation.repository";
+
+export type { InvitationListResult } from "../repository/invitation.repository";
 
 @Injectable()
 export class InvitationService {
@@ -35,6 +43,13 @@ export class InvitationService {
 
 	async findPendingForTenant(tenantId: string): Promise<Invitation[]> {
 		return this.invitationRepository.findPendingForTenant(tenantId);
+	}
+
+	async findAllForTenant(
+		tenantId: string,
+		filters: InvitationFilters,
+	): Promise<InvitationListResult> {
+		return this.invitationRepository.findAllForTenant(tenantId, filters);
 	}
 
 	async findPendingByTenantAndEmail(

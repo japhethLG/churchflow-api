@@ -9,6 +9,7 @@ import { MemberService } from "@modules/core/member/services/member.service";
 import { PledgeFilters } from "@modules/core/pledge/pledge.types";
 import { PledgeListResult } from "@modules/core/pledge/repository/pledge.repository";
 import { PledgeService } from "@modules/core/pledge/services/pledge.service";
+import { UserService } from "@modules/core/user/services/user.service";
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { AuditAction, type Pledge, type PledgeStatus } from "@prisma/client";
 
@@ -45,6 +46,7 @@ export class PledgeFeatureService {
 		private readonly campaignService: CampaignService,
 		private readonly campaignItemService: CampaignItemService,
 		private readonly memberService: MemberService,
+		private readonly userService: UserService,
 		private readonly auditService: AuditService,
 	) {}
 
@@ -92,8 +94,14 @@ export class PledgeFeatureService {
 		return this.pledgeService.getAll(tenant.tenantId, filters);
 	}
 
-	async getById(tenant: TenantContext, id: string): Promise<Pledge> {
-		return this.pledgeService.getById(tenant.tenantId, id);
+	async getById(
+		tenant: TenantContext,
+		id: string,
+		options: { includeDeleted?: boolean } = {},
+	): Promise<Pledge> {
+		return options.includeDeleted
+			? this.pledgeService.getByIdIncludingDeleted(tenant.tenantId, id)
+			: this.pledgeService.getById(tenant.tenantId, id);
 	}
 
 	async update(
@@ -120,16 +128,34 @@ export class PledgeFeatureService {
 		tenant: TenantContext,
 		id: string,
 	): Promise<Pledge> {
+		const actor = await this.userService.findByFirebaseUid(user.firebaseUid);
 		const pledge = await this.pledgeService.delete(
 			tenant.tenantId,
 			id,
-			user.firebaseUid,
+			actor?.id ?? null,
 		);
 		await this.auditService.record({
 			tenantId: tenant.tenantId,
 			actorUid: user.firebaseUid,
 			actorEmail: user.email,
 			action: AuditAction.DELETE,
+			entity: "Pledge",
+			entityId: pledge.id,
+		});
+		return pledge;
+	}
+
+	async restore(
+		user: AuthUser,
+		tenant: TenantContext,
+		id: string,
+	): Promise<Pledge> {
+		const pledge = await this.pledgeService.restore(tenant.tenantId, id);
+		await this.auditService.record({
+			tenantId: tenant.tenantId,
+			actorUid: user.firebaseUid,
+			actorEmail: user.email,
+			action: AuditAction.RESTORE,
 			entity: "Pledge",
 			entityId: pledge.id,
 		});

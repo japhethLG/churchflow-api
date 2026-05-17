@@ -1,5 +1,8 @@
 import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
 import {
+	applyStateFilter,
+	previewRestoreCascade,
+	type RestoreCascadeCounts,
 	restore,
 	softDelete,
 	withDeleted,
@@ -45,19 +48,30 @@ export class CampaignRepository {
 		tenantId: string,
 		filters: CampaignFilters,
 	): Promise<CampaignListResult> {
-		const where: Prisma.CampaignWhereInput = {
+		const createdAt =
+			filters.dateFrom || filters.dateTo
+				? {
+						...(filters.dateFrom ? { gte: filters.dateFrom } : {}),
+						...(filters.dateTo ? { lte: filters.dateTo } : {}),
+					}
+				: undefined;
+		const baseWhere: Prisma.CampaignWhereInput = {
 			tenantId,
 			...(filters.status ? { status: filters.status } : {}),
+			...(createdAt ? { createdAt } : {}),
 		};
+		const { where, wrap } = applyStateFilter("Campaign", baseWhere, filters);
 
 		const [items, total] = await Promise.all([
-			this.prisma.campaign.findMany({
-				where,
-				orderBy: { createdAt: "desc" },
-				skip: filters.offset,
-				take: filters.limit,
-			}),
-			this.prisma.campaign.count({ where }),
+			this.prisma.campaign.findMany(
+				wrap({
+					where,
+					orderBy: { createdAt: "desc" as const },
+					skip: filters.offset,
+					take: filters.limit,
+				}),
+			),
+			this.prisma.campaign.count(wrap({ where })),
 		]);
 
 		return { items, total };
@@ -98,6 +112,17 @@ export class CampaignRepository {
 			await restore(tx, "Campaign", { where: { id, tenantId } });
 			return tx.campaign.findFirstOrThrow({ where: { id, tenantId } });
 		});
+	}
+
+	// Per-child cascade counts for an upcoming restore. Powers the "Restoring
+	// this campaign will also restore N items" confirmation copy in the FE.
+	// Only counts rows where `deletedByCascade = true` — independently-deleted
+	// descendants are NOT brought back by restore and so are not previewed.
+	async restorePreview(
+		_tenantId: string,
+		id: string,
+	): Promise<RestoreCascadeCounts> {
+		return previewRestoreCascade(this.prisma, "Campaign", id);
 	}
 
 	// Per-campaign progress: pledge totals + transaction totals, both overall

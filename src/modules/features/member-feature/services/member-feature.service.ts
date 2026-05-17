@@ -82,11 +82,13 @@ export class MemberFeatureService {
 		keepId: string,
 		dropId: string,
 	): Promise<MergeResult> {
+		const actor = await this.userService.findByFirebaseUid(user.firebaseUid);
 		return this.memberMerging.merge({
 			tenantId: tenant.tenantId,
 			keepId,
 			dropId,
 			actorUid: user.firebaseUid,
+			actorId: actor?.id ?? null,
 			actorEmail: user.email,
 		});
 	}
@@ -125,6 +127,8 @@ export class MemberFeatureService {
 			search?: string;
 			offset?: number;
 			limit?: number;
+			includeDeleted?: boolean;
+			onlyDeleted?: boolean;
 		},
 	): Promise<MemberListResult> {
 		return this.memberService.getAll(tenant.tenantId, filters);
@@ -137,8 +141,14 @@ export class MemberFeatureService {
 		return this.memberService.getById(tenant.tenantId, memberId);
 	}
 
-	async getById(tenant: TenantContext, id: string): Promise<Member> {
-		return this.memberService.getById(tenant.tenantId, id);
+	async getById(
+		tenant: TenantContext,
+		id: string,
+		options: { includeDeleted?: boolean } = {},
+	): Promise<Member> {
+		return options.includeDeleted
+			? this.memberService.getByIdIncludingDeleted(tenant.tenantId, id)
+			: this.memberService.getById(tenant.tenantId, id);
 	}
 
 	async update(
@@ -213,10 +223,11 @@ export class MemberFeatureService {
 		tenant: TenantContext,
 		id: string,
 	): Promise<Member> {
+		const actor = await this.userService.findByFirebaseUid(user.firebaseUid);
 		const member = await this.memberService.delete(
 			tenant.tenantId,
 			id,
-			user.firebaseUid,
+			actor?.id ?? null,
 		);
 
 		// Remove the tenant from the user's claims if they were linked.
@@ -232,6 +243,33 @@ export class MemberFeatureService {
 			actorUid: user.firebaseUid,
 			actorEmail: user.email,
 			action: AuditAction.DELETE,
+			entity: "Member",
+			entityId: member.id,
+		});
+		return member;
+	}
+
+	async restore(
+		user: AuthUser,
+		tenant: TenantContext,
+		id: string,
+	): Promise<Member> {
+		const member = await this.memberService.restore(tenant.tenantId, id);
+
+		// If the restored member is linked to a user, refresh their claims so
+		// the membership reappears in `tenantMemberships` on next token use.
+		if (member.userId) {
+			const linkedUser = await this.userService.findById(member.userId);
+			if (linkedUser) {
+				await this.userClaims.refreshFor(linkedUser.firebaseUid);
+			}
+		}
+
+		await this.auditService.record({
+			tenantId: tenant.tenantId,
+			actorUid: user.firebaseUid,
+			actorEmail: user.email,
+			action: AuditAction.RESTORE,
 			entity: "Member",
 			entityId: member.id,
 		});

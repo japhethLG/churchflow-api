@@ -18,4 +18,7 @@ export interface UpdateCampaignItemInput {
 
 export interface CampaignItemFilters {
 	campaignId?: string;
+	// 3-state archive filter — same semantics as CampaignFilters.
+	includeDeleted?: boolean;
+	onlyDeleted?: boolean;
 }

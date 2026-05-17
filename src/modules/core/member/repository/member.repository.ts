@@ -1,5 +1,7 @@
 import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
 import {
+	applyStateFilter,
+	restore,
 	softDelete,
 	withDeleted,
 } from "@infrastructure/prisma-client/soft-delete";
@@ -48,6 +50,15 @@ export class MemberRepository {
 		});
 	}
 
+	async findByIdIncludingDeleted(
+		tenantId: string,
+		id: string,
+	): Promise<Member | null> {
+		return this.prisma.member.findFirst(
+			withDeleted("Member", { where: { id, tenantId } }),
+		);
+	}
+
 	async findByUserId(tenantId: string, userId: string): Promise<Member | null> {
 		return this.prisma.member.findFirst({
 			where: { tenantId, userId },
@@ -58,7 +69,7 @@ export class MemberRepository {
 		tenantId: string,
 		filters: MemberFilters,
 	): Promise<MemberListResult> {
-		const where: Prisma.MemberWhereInput = {
+		const baseWhere: Prisma.MemberWhereInput = {
 			tenantId,
 			...(filters.status ? { status: filters.status } : {}),
 			...(filters.search
@@ -71,15 +82,18 @@ export class MemberRepository {
 					}
 				: {}),
 		};
+		const { where, wrap } = applyStateFilter("Member", baseWhere, filters);
 
 		const [items, total] = await Promise.all([
-			this.prisma.member.findMany({
-				where,
-				orderBy: { createdAt: "desc" },
-				skip: filters.offset,
-				take: filters.limit,
-			}),
-			this.prisma.member.count({ where }),
+			this.prisma.member.findMany(
+				wrap({
+					where,
+					orderBy: { createdAt: "desc" as const },
+					skip: filters.offset,
+					take: filters.limit,
+				}),
+			),
+			this.prisma.member.count(wrap({ where })),
 		]);
 
 		return { items, total };
@@ -177,6 +191,13 @@ export class MemberRepository {
 			return tx.member.findFirstOrThrow(
 				withDeleted("Member", { where: { id, tenantId } }),
 			);
+		});
+	}
+
+	async restore(tenantId: string, id: string): Promise<Member> {
+		return this.prisma.$transaction(async (tx) => {
+			await restore(tx, "Member", { where: { id, tenantId } });
+			return tx.member.findFirstOrThrow({ where: { id, tenantId } });
 		});
 	}
 }

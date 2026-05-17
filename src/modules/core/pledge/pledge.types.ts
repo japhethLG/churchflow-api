@@ -22,6 +22,13 @@ export interface PledgeFilters {
 	campaignItemId?: string;
 	memberId?: string;
 	status?: PledgeStatus;
+	// `dateFrom`/`dateTo` bracket `createdAt` (inclusive, ISO 8601 UTC) —
+	// the date the pledge was made. Pledge has no separate `pledgedAt`.
+	dateFrom?: Date;
+	dateTo?: Date;
 	offset?: number;
 	limit?: number;
+	// 3-state archive filter — see CampaignFilters for semantics.
+	includeDeleted?: boolean;
+	onlyDeleted?: boolean;
 }

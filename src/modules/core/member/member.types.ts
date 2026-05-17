@@ -29,4 +29,7 @@ export interface MemberFilters {
 	search?: string;
 	offset?: number;
 	limit?: number;
+	// 3-state archive filter — see CampaignFilters for semantics.
+	includeDeleted?: boolean;
+	onlyDeleted?: boolean;
 }

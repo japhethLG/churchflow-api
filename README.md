@@ -270,6 +270,17 @@ Self-intent DTOs use a `My...` prefix
 (`MyPledgeResponseDto`, `MyPledgeFiltersRequestDto`) and **must omit
 `memberId`** — the controller forces it from `tenant.memberId`.
 
+**Shared filter bases.** The recurring query-string contracts —
+soft-delete state flags, inclusive date range, offset/limit pagination —
+live in `src/shared/dto/` as three small base classes
+(`StateFilterRequestDto`, `DateRangeRequestDto`, `PaginationRequestDto`).
+Concrete list-filter DTOs compose them via `IntersectionType` from
+`@nestjs/swagger`; if you need to tighten one inherited field (e.g.
+`@Max(200)` on `limit`), use `OmitType` to drop it before redeclaring.
+Each DTO comment names the column its date range brackets — typically
+`createdAt`, except `transactions` which uses `Transaction.date`. See
+[CLAUDE.md §7.7](CLAUDE.md#77-shared-filter-base-dtos--compose-dont-redeclare).
+
 ## Audit trail
 
 Mutating actions write an append-only `AuditEvent` row via `AuditService`.

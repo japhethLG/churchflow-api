@@ -29,6 +29,20 @@ export class PledgeService {
 		return pledge;
 	}
 
+	async getByIdIncludingDeleted(
+		tenantId: string,
+		id: string,
+	): Promise<PledgeWithAmounts> {
+		const pledge = await this.pledgeRepository.findByIdIncludingDeleted(
+			tenantId,
+			id,
+		);
+		if (!pledge) {
+			throw new NotFoundException(`Pledge not found: ${id}`);
+		}
+		return pledge;
+	}
+
 	async getAll(
 		tenantId: string,
 		filters?: PledgeFilters,
@@ -53,6 +67,11 @@ export class PledgeService {
 	): Promise<Pledge> {
 		await this.getById(tenantId, id);
 		return this.pledgeRepository.softDelete(tenantId, id, actorId);
+	}
+
+	async restore(tenantId: string, id: string): Promise<Pledge> {
+		await this.getByIdIncludingDeleted(tenantId, id);
+		return this.pledgeRepository.restore(tenantId, id);
 	}
 
 	async reassignMember(

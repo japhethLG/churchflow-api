@@ -5,7 +5,11 @@ import {
 } from "@infrastructure/email/email.interface";
 import { UserClaimsService } from "@infrastructure/firebase-auth/user-claims.service";
 import { AuditService } from "@modules/core/audit/services/audit.service";
-import { InvitationService } from "@modules/core/invitation/services/invitation.service";
+import { InvitationFilters } from "@modules/core/invitation/invitation.types";
+import {
+	InvitationListResult,
+	InvitationService,
+} from "@modules/core/invitation/services/invitation.service";
 import { MemberService } from "@modules/core/member/services/member.service";
 import { TenantService } from "@modules/core/tenant/services/tenant.service";
 import { UserService } from "@modules/core/user/services/user.service";
@@ -98,7 +102,7 @@ export class InvitationProcessingService {
 		}
 
 		const token = randomUUID();
-		const expiresAt = dayjs().add(INVITATION_TTL_DAYS, "day").toDate();
+		const expiresAt = dayjs.utc().add(INVITATION_TTL_DAYS, "day").toDate();
 
 		const invitation = await this.invitationService.create({
 			tenantId: input.tenantId,
@@ -241,6 +245,13 @@ export class InvitationProcessingService {
 
 	async listPending(tenantId: string): Promise<Invitation[]> {
 		return this.invitationService.findPendingForTenant(tenantId);
+	}
+
+	async list(
+		tenantId: string,
+		filters: InvitationFilters,
+	): Promise<InvitationListResult> {
+		return this.invitationService.findAllForTenant(tenantId, filters);
 	}
 
 	// Public lookup for the acceptance page — so the invitee sees the

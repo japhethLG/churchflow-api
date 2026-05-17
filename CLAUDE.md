@@ -669,7 +669,82 @@ Every handler **must** declare a response type via one of the response
 decorators. If the handler returns nothing, use `@ApiNoContentResponse()` +
 `@HttpCode(204)`.
 
-### 7.7 File naming (intent-split features)
+### 7.7 Shared filter base DTOs — compose, don't redeclare
+
+List endpoints repeatedly accept the same three query-string contracts:
+soft-delete state flags, an inclusive date range, and offset/limit
+pagination. To keep them consistent, each contract has a single shared
+base DTO in `src/shared/dto/` that concrete filter DTOs compose via
+`IntersectionType` from `@nestjs/swagger`:
+
+| Shared base | Path | Fields |
+|---|---|---|
+| `StateFilterRequestDto` | [state-filter.request.dto.ts](src/shared/dto/state-filter.request.dto.ts) | `includeDeleted`, `onlyDeleted` (3-state archive filter; encoding matches `applyStateFilter` in the soft-delete helpers) |
+| `DateRangeRequestDto` | [date-range.request.dto.ts](src/shared/dto/date-range.request.dto.ts) | `dateFrom`, `dateTo` (both inclusive, ISO 8601 UTC) |
+| `PaginationRequestDto` | [pagination.request.dto.ts](src/shared/dto/pagination.request.dto.ts) | `offset`, `limit` |
+
+Compose only the bases you actually need:
+
+```ts
+// State + date + pagination — the typical "admin list" shape.
+export class PledgeFiltersRequestDto extends IntersectionType(
+  StateFilterRequestDto,
+  DateRangeRequestDto,
+  PaginationRequestDto,
+) {
+  @ApiPropertyOptional({ enum: PledgeStatus })
+  @IsOptional()
+  @IsEnum(PledgeStatus)
+  status?: PledgeStatus;
+  // …
+}
+
+// Date + pagination only — no archive switcher on the surface.
+export class MyTransactionFiltersRequestDto extends IntersectionType(
+  DateRangeRequestDto,
+  PaginationRequestDto,
+) { /* … */ }
+```
+
+**Overriding a single field.** If a concrete DTO needs to *tighten* an
+inherited field (e.g. cap `limit` at 200 on the audit log), use
+`OmitType` to drop the inherited declaration, then redeclare locally:
+
+```ts
+export class AuditEventsQueryRequestDto extends IntersectionType(
+  DateRangeRequestDto,
+  OmitType(PaginationRequestDto, ["limit"] as const),
+) {
+  // …
+  @ApiPropertyOptional({ example: 50, maximum: 200 })
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200)
+  limit?: number;
+}
+```
+
+Do NOT redeclare an inherited field without `OmitType` — TS will reject
+it (TS2612) and a `declare` workaround would strip the decorators so
+class-validator silently drops the rules.
+
+**The column the range applies to is endpoint-specific.** Always
+document it in the DTO's leading comment (`dateFrom`/`dateTo` bracket
+`createdAt` on pledges/campaigns/audit/invitations; `Transaction.date`
+on transactions). Repositories apply the range directly to that column
+in their `where` builder.
+
+**The `/transactions/summary` endpoint is a hybrid.** It extends
+`DateRangeRequestDto` and adds a legacy `months` rolling-window
+fallback — when `dateFrom`/`dateTo` are present the explicit range
+wins; otherwise the feature service builds an N-month window.
+See [transaction-summary-query.request.ts](src/modules/features/transaction-feature/controllers/tenant/requests/transaction-summary-query.request.ts).
+
+**Invitations list returns every status by default.** The legacy
+"PENDING-only" behavior was replaced when the filter DTO landed; pass
+`status=PENDING` (or any other value) to scope. The list response now
+carries `MetaDto` (`offset`/`limit`/`total`) like every other paged
+endpoint.
+
+### 7.8 File naming (intent-split features)
 
 - One **class per file**. No multi-class files inside intent folders.
 - Requests: `<verb>-<entity>.request.ts` (e.g. `create-pledge.request.ts`).
@@ -794,7 +869,7 @@ soft-deletable entity exposes the operation through three layers:
 
 ```text
 Feature/Process service
-        ▼  passes actorId from @CurrentUser()
+        ▼  resolves internal User.id from firebase UID, passes as actorId
 Core service.delete(tenantId, id, actorId)   ← throws NotFoundException on miss
         ▼
 Core repository.softDelete(tenantId, id, actorId)   ← wraps the helper
@@ -802,16 +877,28 @@ Core repository.softDelete(tenantId, id, actorId)   ← wraps the helper
 softDelete(tx, "Model", { where, actorId })   ← runs the cascade in $transaction
 ```
 
+> **`actorId` is the internal `User.id`, NOT the firebase UID.** Stamping
+> the FK to our own `User` table makes "who deleted this" answerable
+> without a Firebase round-trip and survives a Firebase account deletion.
+> `AuditEvent.actorUid` keeps the firebase UID separately for the audit
+> trail — same actor, two identifiers, two purposes.
+
 Concretely:
 
 ```ts
-// Feature service (e.g. CampaignFeatureService.delete) — calls core service.
+// Feature service (e.g. CampaignFeatureService.delete) — resolves User.id
+// before calling core service.
+const actor = await this.userService.findByFirebaseUid(user.firebaseUid);
 const campaign = await this.campaignService.delete(
   tenant.tenantId,
   id,
-  user.firebaseUid,
+  actor?.id ?? null,
 );
-await this.auditService.record({ ... entityId: campaign.id });
+await this.auditService.record({
+  ...
+  actorUid: user.firebaseUid,      // audit still uses the firebase UID
+  entityId: campaign.id,
+});
 
 // Core service (e.g. CampaignService.delete) — thin wrapper that
 // preserves NotFound semantics and forwards actorId.
@@ -868,8 +955,11 @@ where the schema files live, or include `prisma/schema/` in the image.
    the tombstone via `withDeleted`. Expose
    `delete(tenantId, id, actorId)` on the core service that calls
    `getById` first (for NotFound semantics) then forwards to the repo.
-5. Feature handlers call `entityService.delete(..., user.firebaseUid)`
-   and pass the returned row to the audit record.
+5. Feature handlers resolve the internal User.id via
+   `userService.findByFirebaseUid(user.firebaseUid)`, then call
+   `entityService.delete(..., actor?.id ?? null)` and pass the returned
+   row to the audit record (which still uses `user.firebaseUid` as
+   `actorUid`).
 
 #### Anti-patterns
 
@@ -890,8 +980,12 @@ where the schema files live, or include `prisma/schema/` in the image.
   in a repo method (e.g. `findByIdIncludingDeleted`) and expose that
   through the service.
 - ❌ Forgetting to thread `actorId` through `service.delete(...)` —
-  `deletedBy` will be `NULL` on the tombstone. Pull `user.firebaseUid`
-  from `@CurrentUser()` and pass it down.
+  `deletedBy` will be `NULL` on the tombstone. Resolve the internal
+  `User.id` via `userService.findByFirebaseUid(user.firebaseUid)` first;
+  pass that (NOT the firebase UID) as `actorId`.
+- ❌ Passing `user.firebaseUid` as `actorId` to `service.delete(...)`.
+  `deletedBy` columns store the internal `User.id` — the firebase UID
+  only lives on `AuditEvent.actorUid`.
 - ❌ Stamping `deletedAt: null` into a read `where` clause. The
   extension already injects it at every nesting depth (including
   `AND`/`OR`/`NOT`, `some`/`every`/`none`, and relation predicates
@@ -1136,6 +1230,8 @@ refresh.
 | Hard-coded IDs in tests | Use the example constants |
 | `npm run build` without first running `prisma:generate` after schema edits | Type errors on `@prisma/client` imports |
 | Swapping `@nestjs/swagger`'s `PickType` for `class-transformer`'s | Loses `@ApiProperty` metadata — always import from `@nestjs/swagger` |
+| Redeclaring `includeDeleted` / `onlyDeleted` / `dateFrom` / `dateTo` / `offset` / `limit` on a list filter DTO | Compose `StateFilterRequestDto` / `DateRangeRequestDto` / `PaginationRequestDto` via `IntersectionType` (§7.7) |
+| Filter DTO that doesn't say which column its `dateFrom`/`dateTo` brackets | Document it in the DTO comment — `createdAt` on pledges/campaigns/audit/invitations, `Transaction.date` on transactions |
 
 ---
 

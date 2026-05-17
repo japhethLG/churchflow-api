@@ -28,7 +28,11 @@ import {
 import { DeleteResponseDto } from "@shared/dto/delete-response.dto";
 
 import { TenantFeatureService } from "../../services/tenant-feature.service";
-import { CreateTenantRequestDto, RenameTenantRequestDto } from "./requests";
+import {
+	CreateTenantRequestDto,
+	RenameTenantRequestDto,
+	TenantFiltersRequestDto,
+} from "./requests";
 import { TenantListResponseDto, TenantResponseDto } from "./responses";
 
 // Platform intent for tenants. Operates across the entire platform; only
@@ -63,9 +67,10 @@ export class TenantPlatformController {
 	@ApiOkResponse({ type: TenantListResponseDto })
 	async list(
 		@CurrentAbility() ability: AppAbility,
+		@Query() filters: TenantFiltersRequestDto,
 	): Promise<TenantListResponseDto> {
 		assertCan(ability, "read", "Tenant");
-		const items = await this.tenantFeatureService.list();
+		const items = await this.tenantFeatureService.list(filters);
 		return { items } as unknown as TenantListResponseDto;
 	}
 
@@ -131,7 +136,7 @@ export class TenantPlatformController {
 		@CurrentAbility() ability: AppAbility,
 		@Param("tenantId") id: string,
 	): Promise<TenantResponseDto> {
-		assertCan(ability, "update", "Tenant");
+		assertCan(ability, "restore", "Tenant");
 		return this.tenantFeatureService.restore(
 			user,
 			id,

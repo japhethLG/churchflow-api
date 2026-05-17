@@ -1,4 +1,8 @@
 export {
+	previewRestoreCascade,
+	type RestoreCascadeCounts,
+} from "./restore-preview.helpers";
+export {
 	findRelation,
 	getCascadeChildren,
 	getModelAccessor,
@@ -18,4 +22,9 @@ export {
 	type RestoreArgs,
 	type SoftDeleteArgs,
 } from "./soft-delete.types";
+export {
+	applyStateFilter,
+	type StateFilterFlags,
+	type StateFilterResolution,
+} from "./state-filter.helpers";
 export { withDeleted } from "./with-deleted";

@@ -1,5 +1,7 @@
 import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
 import {
+	applyStateFilter,
+	restore,
 	softDelete,
 	withDeleted,
 } from "@infrastructure/prisma-client/soft-delete";
@@ -35,10 +37,26 @@ export class PledgeRepository {
 		tenantId: string,
 		id: string,
 	): Promise<PledgeWithAmounts | null> {
+		return this.findByIdInner(tenantId, id, false);
+	}
+
+	async findByIdIncludingDeleted(
+		tenantId: string,
+		id: string,
+	): Promise<PledgeWithAmounts | null> {
+		return this.findByIdInner(tenantId, id, true);
+	}
+
+	private async findByIdInner(
+		tenantId: string,
+		id: string,
+		includeDeleted: boolean,
+	): Promise<PledgeWithAmounts | null> {
+		const findArgs = { where: { id, tenantId } };
 		const [pledge, aggregate] = await Promise.all([
-			this.prisma.pledge.findFirst({
-				where: { id, tenantId },
-			}),
+			includeDeleted
+				? this.prisma.pledge.findFirst(withDeleted("Pledge", findArgs))
+				: this.prisma.pledge.findFirst(findArgs),
 			this.prisma.transaction.aggregate({
 				where: { pledgeId: id },
 				_sum: { amount: true },
@@ -59,7 +77,14 @@ export class PledgeRepository {
 		tenantId: string,
 		filters: PledgeFilters,
 	): Promise<PledgeListResult> {
-		const where: Prisma.PledgeWhereInput = {
+		const createdAt =
+			filters.dateFrom || filters.dateTo
+				? {
+						...(filters.dateFrom ? { gte: filters.dateFrom } : {}),
+						...(filters.dateTo ? { lte: filters.dateTo } : {}),
+					}
+				: undefined;
+		const baseWhere: Prisma.PledgeWhereInput = {
 			tenantId,
 			...(filters.campaignId ? { campaignId: filters.campaignId } : {}),
 			...(filters.campaignItemId
@@ -67,17 +92,23 @@ export class PledgeRepository {
 				: {}),
 			...(filters.memberId ? { memberId: filters.memberId } : {}),
 			...(filters.status ? { status: filters.status } : {}),
+			...(createdAt ? { createdAt } : {}),
 		};
+		const { where, wrap } = applyStateFilter("Pledge", baseWhere, filters);
 
 		const [items, total, aggregate] = await Promise.all([
-			this.prisma.pledge.findMany({
-				where,
-				orderBy: { createdAt: "desc" },
-				skip: filters.offset,
-				take: filters.limit,
-			}),
-			this.prisma.pledge.count({ where }),
-			this.prisma.pledge.aggregate({ where, _sum: { pledgedAmount: true } }),
+			this.prisma.pledge.findMany(
+				wrap({
+					where,
+					orderBy: { createdAt: "desc" as const },
+					skip: filters.offset,
+					take: filters.limit,
+				}),
+			),
+			this.prisma.pledge.count(wrap({ where })),
+			this.prisma.pledge.aggregate(
+				wrap({ where, _sum: { pledgedAmount: true as const } }),
+			),
 		]);
 
 		const pledgeIds = items.map((p) => p.id);
@@ -133,6 +164,13 @@ export class PledgeRepository {
 			return tx.pledge.findFirstOrThrow(
 				withDeleted("Pledge", { where: { id, tenantId } }),
 			);
+		});
+	}
+
+	async restore(tenantId: string, id: string): Promise<Pledge> {
+		return this.prisma.$transaction(async (tx) => {
+			await restore(tx, "Pledge", { where: { id, tenantId } });
+			return tx.pledge.findFirstOrThrow({ where: { id, tenantId } });
 		});
 	}
 

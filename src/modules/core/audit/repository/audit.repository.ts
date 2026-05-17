@@ -29,11 +29,20 @@ export class AuditRepository {
 	}
 
 	async findAll(filters: AuditEventFilters): Promise<AuditEventListResult> {
+		const createdAt =
+			filters.dateFrom || filters.dateTo
+				? {
+						...(filters.dateFrom ? { gte: filters.dateFrom } : {}),
+						...(filters.dateTo ? { lte: filters.dateTo } : {}),
+					}
+				: undefined;
 		const where: Prisma.AuditEventWhereInput = {
 			...(filters.tenantId ? { tenantId: filters.tenantId } : {}),
 			...(filters.entity ? { entity: filters.entity } : {}),
 			...(filters.entityId ? { entityId: filters.entityId } : {}),
 			...(filters.actorUid ? { actorUid: filters.actorUid } : {}),
+			...(filters.action ? { action: filters.action } : {}),
+			...(createdAt ? { createdAt } : {}),
 		};
 
 		const [items, total] = await Promise.all([

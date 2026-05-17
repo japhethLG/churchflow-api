@@ -1,4 +1,5 @@
 import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
+import { applyStateFilter } from "@infrastructure/prisma-client/soft-delete";
 import { Injectable } from "@nestjs/common";
 import { MemberRole, User } from "@prisma/client";
 
@@ -21,6 +22,8 @@ export interface UserListFilters {
 	superAdminOnly?: boolean;
 	skip?: number;
 	take?: number;
+	includeDeleted?: boolean;
+	onlyDeleted?: boolean;
 }
 
 export interface UserListWithMembershipsResult {
@@ -82,21 +85,32 @@ export class UserRepository {
 			where.memberships = { some: { tenantId: filters.tenantId } };
 		}
 
+		const { where: scopedWhere, wrap } = applyStateFilter(
+			"User",
+			where,
+			{
+				includeDeleted: filters.includeDeleted,
+				onlyDeleted: filters.onlyDeleted,
+			},
+		);
+
 		const [users, total] = await Promise.all([
-			this.prisma.user.findMany({
-				where,
-				include: {
-					memberships: {
-						include: {
-							tenant: { select: { id: true, slug: true, name: true } },
+			this.prisma.user.findMany(
+				wrap({
+					where: scopedWhere,
+					include: {
+						memberships: {
+							include: {
+								tenant: { select: { id: true, slug: true, name: true } },
+							},
 						},
 					},
-				},
-				orderBy: { createdAt: "desc" },
-				skip,
-				take,
-			}),
-			this.prisma.user.count({ where }),
+					orderBy: { createdAt: "desc" },
+					skip,
+					take,
+				}),
+			),
+			this.prisma.user.count(wrap({ where: scopedWhere })),
 		]);
 
 		const items: UserWithMembership[] = users.map((u) => ({

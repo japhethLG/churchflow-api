@@ -15,7 +15,12 @@ export interface MergeMembersInput {
 	tenantId: string;
 	keepId: string;
 	dropId: string;
+	// Firebase UID — recorded in the audit event for the merge.
 	actorUid: string;
+	// Internal User.id — stamped onto the dropped member's `deletedBy`.
+	// Null when the firebase UID has no corresponding User row (super-
+	// admin acting without a member row, etc.).
+	actorId: string | null;
 	actorEmail?: string;
 }
 
@@ -47,7 +52,7 @@ export class MemberMergingService {
 	// Dry-run for the merge UI: shows the admin exactly what will move and
 	// which fields will be copied. No mutations.
 	async preview(
-		input: Omit<MergeMembersInput, "actorUid" | "actorEmail">,
+		input: Omit<MergeMembersInput, "actorUid" | "actorId" | "actorEmail">,
 	): Promise<MergePreview> {
 		const { keep, drop } = await this.loadAndValidate(
 			input.tenantId,
@@ -102,7 +107,7 @@ export class MemberMergingService {
 			: keep;
 
 		// Soft-delete the dropped member.
-		await this.memberService.delete(input.tenantId, drop.id, input.actorUid);
+		await this.memberService.delete(input.tenantId, drop.id, input.actorId);
 
 		// If the dropped row was linked to a user, that user's tenantMemberships
 		// claims now point at a soft-deleted member — refresh so they pick up

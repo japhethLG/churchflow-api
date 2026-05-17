@@ -25,6 +25,17 @@ export class CampaignItemService {
 		return item;
 	}
 
+	async getByIdIncludingDeleted(
+		tenantId: string,
+		id: string,
+	): Promise<CampaignItem> {
+		const item = await this.repository.findByIdIncludingDeleted(tenantId, id);
+		if (!item) {
+			throw new NotFoundException(`Campaign item not found: ${id}`);
+		}
+		return item;
+	}
+
 	async getAll(
 		tenantId: string,
 		filters?: CampaignItemFilters,
@@ -48,5 +59,10 @@ export class CampaignItemService {
 	): Promise<CampaignItem> {
 		await this.getById(tenantId, id);
 		return this.repository.softDelete(tenantId, id, actorId);
+	}
+
+	async restore(tenantId: string, id: string): Promise<CampaignItem> {
+		await this.getByIdIncludingDeleted(tenantId, id);
+		return this.repository.restore(tenantId, id);
 	}
 }

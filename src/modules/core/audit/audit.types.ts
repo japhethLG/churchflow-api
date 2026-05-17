@@ -16,6 +16,10 @@ export interface AuditEventFilters {
 	entity?: string;
 	entityId?: string;
 	actorUid?: string;
+	action?: AuditAction;
+	// `dateFrom`/`dateTo` bracket `createdAt` (inclusive, ISO 8601 UTC).
+	dateFrom?: Date;
+	dateTo?: Date;
 	offset?: number;
 	limit?: number;
 }

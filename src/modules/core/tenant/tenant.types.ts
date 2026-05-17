@@ -20,3 +20,9 @@ export interface UpdateTenantInput {
 	logoUrl?: string | null;
 	customTransactionTypes?: string[];
 }
+
+export interface TenantFilters {
+	// 3-state archive filter — see CampaignFilters for semantics.
+	includeDeleted?: boolean;
+	onlyDeleted?: boolean;
+}

@@ -1,5 +1,7 @@
 import type { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
 import {
+	applyStateFilter,
+	previewRestoreCascade,
 	restore,
 	softDelete,
 	withDeleted,
@@ -1261,6 +1263,80 @@ describe("Soft-delete extension — aggregate / groupBy", () => {
 	});
 });
 
+describe("Soft-delete helper — previewRestoreCascade", () => {
+	it("returns an empty object when the parent has no cascaded descendants", async () => {
+		// Member has no cascade children in the schema. A preview against a
+		// soft-deleted member must come back empty (not undefined, not throw).
+		const tenant = await seedTenant();
+		const member = await seedMember(tenant.id);
+		await softDelete(prisma, "Member", {
+			where: { id: member.id },
+			actorId: "admin-1",
+		});
+
+		const counts = await previewRestoreCascade(prisma, "Member", member.id);
+		expect(counts).toEqual({});
+	});
+
+	it("counts cascaded children that would come back with the parent", async () => {
+		const tenant = await seedTenant();
+		const campaign = await seedCampaign(tenant.id);
+		await seedItem(tenant.id, campaign.id, "Roofing");
+		await seedItem(tenant.id, campaign.id, "Gates");
+		await seedItem(tenant.id, campaign.id, "Pews");
+
+		await softDelete(prisma, "Campaign", {
+			where: { id: campaign.id },
+			actorId: "admin-1",
+		});
+
+		const counts = await previewRestoreCascade(prisma, "Campaign", campaign.id);
+		expect(counts).toEqual({ CampaignItem: 3 });
+	});
+
+	it("excludes independently-deleted descendants from the count", async () => {
+		// Mirrors the restore-symmetry invariant: only deletedByCascade=true
+		// rows are restored alongside the parent, so the preview must reflect
+		// only those. Items the admin had archived earlier on their own won't
+		// be brought back, and shouldn't appear in the count.
+		const tenant = await seedTenant();
+		const campaign = await seedCampaign(tenant.id);
+		const independent = await seedItem(tenant.id, campaign.id, "Removed-First");
+		await seedItem(tenant.id, campaign.id, "Cascaded-A");
+		await seedItem(tenant.id, campaign.id, "Cascaded-B");
+
+		await softDelete(prisma, "CampaignItem", {
+			where: { id: independent.id },
+			actorId: "admin-1",
+		});
+		await softDelete(prisma, "Campaign", {
+			where: { id: campaign.id },
+			actorId: "admin-1",
+		});
+
+		const counts = await previewRestoreCascade(prisma, "Campaign", campaign.id);
+		expect(counts).toEqual({ CampaignItem: 2 });
+	});
+
+	it("returns an empty object when the parent is still active", async () => {
+		// previewRestoreCascade doesn't refuse to run on an active parent —
+		// it just counts whatever cascaded tombstones exist. With no cascade
+		// having happened, the count is zero.
+		const tenant = await seedTenant();
+		const campaign = await seedCampaign(tenant.id);
+		await seedItem(tenant.id, campaign.id, "Active");
+
+		const counts = await previewRestoreCascade(prisma, "Campaign", campaign.id);
+		expect(counts).toEqual({});
+	});
+
+	it("throws when called on a non-soft-deletable model (typo protection)", async () => {
+		await expect(
+			previewRestoreCascade(prisma, "AuditEvent", "any-id"),
+		).rejects.toThrow(/non-soft-deletable/);
+	});
+});
+
 describe("Soft-delete helper — transactional atomicity", () => {
 	it("a thrown error inside $transaction rolls back the cascade", async () => {
 		// `softDelete` accepts any client; calling it with a `tx` should make
@@ -1320,5 +1396,115 @@ describe("Soft-delete helper — transactional atomicity", () => {
 		});
 		expect(itemRow).not.toBeNull();
 		expect(itemRow?.deletedByCascade).toBe(true);
+	});
+});
+
+// Locks in the bug fix: before the walker started honoring explicit
+// `deletedAt` filters in bypass mode, `applyStateFilter`'s "Deleted"
+// branch built `where: { deletedAt: { not: null } }` and then routed the
+// query through `withDeleted`, which silently overwrote the filter with
+// `deletedAt: undefined` — so "Deleted" returned the same rows as "All".
+describe("applyStateFilter — three-state archive filter", () => {
+	async function seedActiveAndDeleted(tenantId: string) {
+		const active = await seedMember(tenantId, "Active");
+		const deleted = await seedMember(tenantId, "Deleted");
+		await prisma.$transaction(async (tx) => {
+			await softDelete(tx, "Member", {
+				where: { id: deleted.id, tenantId },
+				actorId: null,
+			});
+		});
+		return { activeId: active.id, deletedId: deleted.id };
+	}
+
+	it("Active (no flags) returns only active rows", async () => {
+		const tenant = await seedTenant("active-only");
+		const { activeId } = await seedActiveAndDeleted(tenant.id);
+
+		const { where, wrap } = applyStateFilter(
+			"Member",
+			{ tenantId: tenant.id },
+			{},
+		);
+		const rows = await prisma.member.findMany(wrap({ where }));
+
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.id).toBe(activeId);
+		expect(rows[0]?.deletedAt).toBeNull();
+	});
+
+	it("Deleted (onlyDeleted=true) returns only tombstones", async () => {
+		const tenant = await seedTenant("deleted-only");
+		const { deletedId } = await seedActiveAndDeleted(tenant.id);
+
+		const { where, wrap } = applyStateFilter(
+			"Member",
+			{ tenantId: tenant.id },
+			{ onlyDeleted: true },
+		);
+		const rows = await prisma.member.findMany(wrap({ where }));
+
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.id).toBe(deletedId);
+		expect(rows[0]?.deletedAt).not.toBeNull();
+	});
+
+	it("All (includeDeleted=true) returns active + tombstones", async () => {
+		const tenant = await seedTenant("all-rows");
+		const { activeId, deletedId } = await seedActiveAndDeleted(tenant.id);
+
+		const { where, wrap } = applyStateFilter(
+			"Member",
+			{ tenantId: tenant.id },
+			{ includeDeleted: true },
+		);
+		const rows = await prisma.member.findMany(wrap({ where }));
+
+		const ids = rows.map((r) => r.id).sort();
+		expect(ids).toEqual([activeId, deletedId].sort());
+	});
+
+	it("onlyDeleted takes precedence when both flags are set", async () => {
+		const tenant = await seedTenant("precedence");
+		const { deletedId } = await seedActiveAndDeleted(tenant.id);
+
+		const { where, wrap } = applyStateFilter(
+			"Member",
+			{ tenantId: tenant.id },
+			{ includeDeleted: true, onlyDeleted: true },
+		);
+		const rows = await prisma.member.findMany(wrap({ where }));
+
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.id).toBe(deletedId);
+	});
+
+	it("wrap is a no-op when neither flag is set (extension still auto-filters)", async () => {
+		const tenant = await seedTenant("noop-wrap");
+		await seedActiveAndDeleted(tenant.id);
+
+		const { wrap } = applyStateFilter("Member", { tenantId: tenant.id }, {});
+		const args = { where: { tenantId: tenant.id }, take: 100 };
+		// Reference equality — no wrapping occurred.
+		expect(wrap(args)).toBe(args);
+	});
+
+	it("count + aggregate honor the same Deleted slice as findMany", async () => {
+		const tenant = await seedTenant("count-deleted");
+		const { deletedId } = await seedActiveAndDeleted(tenant.id);
+
+		const { where, wrap } = applyStateFilter(
+			"Member",
+			{ tenantId: tenant.id },
+			{ onlyDeleted: true },
+		);
+
+		const [count, rows] = await Promise.all([
+			prisma.member.count(wrap({ where })),
+			prisma.member.findMany(wrap({ where })),
+		]);
+
+		expect(count).toBe(1);
+		expect(rows.map((r) => r.id)).toEqual([deletedId]);
 	});
 });

@@ -2,11 +2,13 @@ import {
 	AuthUser,
 	TenantContext,
 } from "@infrastructure/firebase-auth/types/auth-user.type";
+import { type RestoreCascadeCounts } from "@infrastructure/prisma-client/soft-delete";
 import { AuditService } from "@modules/core/audit/services/audit.service";
 import { CampaignFilters } from "@modules/core/campaign/campaign.types";
 import { CampaignListResult } from "@modules/core/campaign/repository/campaign.repository";
 import { CampaignService } from "@modules/core/campaign/services/campaign.service";
 import { CampaignItemService } from "@modules/core/campaign-item/services/campaign-item.service";
+import { UserService } from "@modules/core/user/services/user.service";
 import { BadRequestException, Injectable } from "@nestjs/common";
 import {
 	AuditAction,
@@ -77,6 +79,7 @@ export class CampaignFeatureService {
 	constructor(
 		private readonly campaignService: CampaignService,
 		private readonly campaignItemService: CampaignItemService,
+		private readonly userService: UserService,
 		private readonly auditService: AuditService,
 	) {}
 
@@ -109,12 +112,37 @@ export class CampaignFeatureService {
 		return this.campaignService.getAll(tenant.tenantId, filters);
 	}
 
-	async getById(tenant: TenantContext, id: string): Promise<CampaignWithItems> {
-		const campaign = await this.campaignService.getById(tenant.tenantId, id);
+	async getById(
+		tenant: TenantContext,
+		id: string,
+		options: { includeDeleted?: boolean; onlyDeleted?: boolean } = {},
+	): Promise<CampaignWithItems> {
+		const includeTombstones = Boolean(
+			options.includeDeleted || options.onlyDeleted,
+		);
+		const campaign = includeTombstones
+			? await this.campaignService.getByIdIncludingDeleted(tenant.tenantId, id)
+			: await this.campaignService.getById(tenant.tenantId, id);
+
+		// Items honor the same filter so the "Removed items" section on the
+		// campaign detail page can show / hide cascaded tombstones based on
+		// the admin's 3-state archive toggle.
 		const items = await this.campaignItemService.getAll(tenant.tenantId, {
 			campaignId: id,
+			includeDeleted: options.includeDeleted,
+			onlyDeleted: options.onlyDeleted,
 		});
 		return { ...campaign, items };
+	}
+
+	// Restore-modal preview — only meaningful when the parent has cascaded
+	// descendants. The cascade graph in this app only has CampaignItem
+	// cascading from Campaign, so this is Campaign-only.
+	async getRestorePreview(
+		tenant: TenantContext,
+		id: string,
+	): Promise<RestoreCascadeCounts> {
+		return this.campaignService.getRestorePreview(tenant.tenantId, id);
 	}
 
 	async update(
@@ -145,10 +173,11 @@ export class CampaignFeatureService {
 		tenant: TenantContext,
 		id: string,
 	): Promise<Campaign> {
+		const actor = await this.userService.findByFirebaseUid(user.firebaseUid);
 		const campaign = await this.campaignService.delete(
 			tenant.tenantId,
 			id,
-			user.firebaseUid,
+			actor?.id ?? null,
 		);
 		await this.auditService.record({
 			tenantId: tenant.tenantId,
@@ -220,11 +249,40 @@ export class CampaignFeatureService {
 		if (item.campaignId !== campaignId) {
 			throw new BadRequestException("Item does not belong to this campaign");
 		}
+		const actor = await this.userService.findByFirebaseUid(user.firebaseUid);
 		return this.campaignItemService.delete(
 			tenant.tenantId,
 			itemId,
-			user.firebaseUid,
+			actor?.id ?? null,
 		);
+	}
+
+	async restoreItem(
+		user: AuthUser,
+		tenant: TenantContext,
+		campaignId: string,
+		itemId: string,
+	): Promise<CampaignItem> {
+		const item = await this.campaignItemService.getByIdIncludingDeleted(
+			tenant.tenantId,
+			itemId,
+		);
+		if (item.campaignId !== campaignId) {
+			throw new BadRequestException("Item does not belong to this campaign");
+		}
+		const restored = await this.campaignItemService.restore(
+			tenant.tenantId,
+			itemId,
+		);
+		await this.auditService.record({
+			tenantId: tenant.tenantId,
+			actorUid: user.firebaseUid,
+			actorEmail: user.email,
+			action: AuditAction.RESTORE,
+			entity: "CampaignItem",
+			entityId: restored.id,
+		});
+		return restored;
 	}
 
 	// Per-campaign progress summary: goal (sum of items), pledged totals,

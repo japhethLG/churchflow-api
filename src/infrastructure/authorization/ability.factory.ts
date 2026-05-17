@@ -43,7 +43,7 @@ export class AbilityFactory {
 				"Invitation",
 			]);
 			can(["read", "update"], "Tenant");
-			cannot(["delete", "create"], "Tenant");
+			cannot(["delete", "create", "restore"], "Tenant");
 			return build();
 		}
 

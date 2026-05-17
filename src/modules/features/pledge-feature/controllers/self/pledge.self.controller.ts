@@ -28,6 +28,7 @@ import {
 	ApiOkResponse,
 	ApiOperation,
 	ApiParam,
+	ApiQuery,
 	ApiTags,
 } from "@nestjs/swagger";
 
@@ -101,14 +102,24 @@ export class PledgeSelfController {
 	@ApiOperation({
 		summary: "Get one of the authenticated member's own pledges",
 	})
+	@ApiQuery({
+		name: "includeDeleted",
+		required: false,
+		type: Boolean,
+		description:
+			"Include the pledge even if archived. Members navigate to their own deleted pledge from a transaction reference to render the read-only banner.",
+	})
 	@ApiOkResponse({ type: MyPledgeResponseDto })
 	async getById(
 		@CurrentTenant() tenant: TenantContext,
 		@CurrentAbility() ability: AppAbility,
 		@Param("id") id: string,
+		@Query("includeDeleted") includeDeleted?: boolean,
 	): Promise<MyPledgeResponseDto> {
 		this.requireMemberContext(tenant);
-		const pledge = await this.pledgeFeatureService.getById(tenant, id);
+		const pledge = await this.pledgeFeatureService.getById(tenant, id, {
+			includeDeleted,
+		});
 		assertCan(ability, "read", asSubject("Pledge", pledge));
 		return pledge as unknown as MyPledgeResponseDto;
 	}

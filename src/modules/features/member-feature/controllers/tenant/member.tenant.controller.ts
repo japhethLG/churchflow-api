@@ -28,6 +28,7 @@ import {
 	ApiOkResponse,
 	ApiOperation,
 	ApiParam,
+	ApiQuery,
 	ApiTags,
 } from "@nestjs/swagger";
 import { DeleteResponseDto } from "@shared/dto/delete-response.dto";
@@ -96,13 +97,23 @@ export class MemberTenantController {
 
 	@Get(":id")
 	@ApiOperation({ summary: "Get a member by id (admin only)" })
+	@ApiQuery({
+		name: "includeDeleted",
+		required: false,
+		type: Boolean,
+		description:
+			"Return the member even if soft-deleted (banner-style archived view).",
+	})
 	@ApiOkResponse({ type: MemberResponseDto })
 	async getById(
 		@CurrentTenant() tenant: TenantContext,
 		@CurrentAbility() ability: AppAbility,
 		@Param("id") id: string,
+		@Query("includeDeleted") includeDeleted?: boolean,
 	): Promise<MemberResponseDto> {
-		const member = await this.memberFeatureService.getById(tenant, id);
+		const member = await this.memberFeatureService.getById(tenant, id, {
+			includeDeleted,
+		});
 		assertCan(ability, "read", asSubject("Member", member));
 		return member as unknown as MemberResponseDto;
 	}
@@ -140,6 +151,23 @@ export class MemberTenantController {
 		assertCan(ability, "delete", asSubject("Member", existing));
 		const deleted = await this.memberFeatureService.delete(user, tenant, id);
 		return { id: deleted.id };
+	}
+
+	@Post(":id/restore")
+	@ApiOperation({ summary: "Restore a soft-deleted member (admin only)" })
+	@ApiOkResponse({ type: MemberResponseDto })
+	async restore(
+		@CurrentUser() user: AuthUser,
+		@CurrentTenant() tenant: TenantContext,
+		@CurrentAbility() ability: AppAbility,
+		@Param("id") id: string,
+	): Promise<MemberResponseDto> {
+		assertCan(ability, "restore", "Member");
+		return this.memberFeatureService.restore(
+			user,
+			tenant,
+			id,
+		) as unknown as Promise<MemberResponseDto>;
 	}
 
 	@Get(":id/merge-preview")

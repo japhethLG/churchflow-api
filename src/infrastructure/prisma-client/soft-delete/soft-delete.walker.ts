@@ -60,9 +60,17 @@ function mergeDeletedAt(
 	mode: WalkerMode,
 	where: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
-	if (mode === "filter" && where && hasExplicitDeletedAtFilter(where)) {
-		// Filter mode respects an existing escape hatch; bypass mode
-		// always overwrites with `undefined`, which is idempotent.
+	// Any explicit `deletedAt` in the caller's `where` is the caller
+	// opting out of the default behavior for that level — leave it alone.
+	// This applies to BOTH modes:
+	//   - filter mode: caller has an escape hatch (e.g. `deletedAt: undefined`
+	//     to include tombstones), respect it.
+	//   - bypass mode: caller has narrowed to a slice (e.g.
+	//     `deletedAt: { not: null }` for tombstones only); overwriting
+	//     with `undefined` would silently widen the query back to "all".
+	//     That was the source of "Deleted" returning the same rows as
+	//     "All" in list endpoints.
+	if (where && hasExplicitDeletedAtFilter(where)) {
 		return where;
 	}
 	return { ...(where ?? {}), [DELETED_AT]: injectedValue(mode) };

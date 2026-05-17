@@ -3,6 +3,7 @@ import { AuditService } from "@modules/core/audit/services/audit.service";
 import { MemberService } from "@modules/core/member/services/member.service";
 import { TenantService } from "@modules/core/tenant/services/tenant.service";
 import { TransactionService } from "@modules/core/transaction/services/transaction.service";
+import { UserService } from "@modules/core/user/services/user.service";
 import { Injectable } from "@nestjs/common";
 import { AuditAction, MemberRole, type Tenant } from "@prisma/client";
 import dayjs from "@shared/dayjs";
@@ -51,6 +52,7 @@ export class TenantFeatureService {
 		private readonly tenantService: TenantService,
 		private readonly memberService: MemberService,
 		private readonly transactionService: TransactionService,
+		private readonly userService: UserService,
 		private readonly auditService: AuditService,
 	) {}
 
@@ -74,14 +76,17 @@ export class TenantFeatureService {
 		return tenant;
 	}
 
-	async list(): Promise<TenantListItem[]> {
-		// Include soft-deleted so super-admin can see and restore archived tenants.
-		const tenants = await this.tenantService.getAllIncludingDeleted();
+	async list(
+		filters: { includeDeleted?: boolean; onlyDeleted?: boolean } = {},
+	): Promise<TenantListItem[]> {
+		// Default = active only. Pass `includeDeleted` / `onlyDeleted` to
+		// surface tombstones for the super-admin's 3-state archive filter.
+		const tenants = await this.tenantService.getAll(filters);
 		return Promise.all(tenants.map((t) => this.enrichTenant(t)));
 	}
 
 	private async enrichTenant(tenant: Tenant): Promise<TenantListItem> {
-		const monthStart = dayjs().startOf("month").toDate();
+		const monthStart = dayjs.utc().startOf("month").toDate();
 
 		const [adminCount, memberCount, adminsRaw, giftsMtd] = await Promise.all([
 			this.memberService.countForTenant(tenant.id, { role: MemberRole.ADMIN }),
@@ -151,7 +156,8 @@ export class TenantFeatureService {
 	}
 
 	async delete(user: AuthUser, id: string): Promise<Tenant> {
-		const tenant = await this.tenantService.delete(id, user.firebaseUid);
+		const actor = await this.userService.findByFirebaseUid(user.firebaseUid);
+		const tenant = await this.tenantService.delete(id, actor?.id ?? null);
 		await this.auditService.record({
 			tenantId: tenant.id,
 			actorUid: user.firebaseUid,

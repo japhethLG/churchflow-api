@@ -47,6 +47,20 @@ export class TransactionService {
 		return tx;
 	}
 
+	async getByIdIncludingDeleted(
+		tenantId: string,
+		id: string,
+	): Promise<Transaction> {
+		const tx = await this.transactionRepository.findByIdIncludingDeleted(
+			tenantId,
+			id,
+		);
+		if (!tx) {
+			throw new NotFoundException(`Transaction not found: ${id}`);
+		}
+		return tx;
+	}
+
 	async getAll(
 		tenantId: string,
 		filters?: TransactionFilters,
@@ -78,6 +92,11 @@ export class TransactionService {
 	): Promise<Transaction> {
 		await this.getById(tenantId, id);
 		return this.transactionRepository.softDelete(tenantId, id, actorId);
+	}
+
+	async restore(tenantId: string, id: string): Promise<Transaction> {
+		await this.getByIdIncludingDeleted(tenantId, id);
+		return this.transactionRepository.restore(tenantId, id);
 	}
 
 	async reassignMember(

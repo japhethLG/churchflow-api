@@ -30,6 +30,17 @@ export class MemberService {
 		return member;
 	}
 
+	async getByIdIncludingDeleted(tenantId: string, id: string): Promise<Member> {
+		const member = await this.memberRepository.findByIdIncludingDeleted(
+			tenantId,
+			id,
+		);
+		if (!member) {
+			throw new NotFoundException(`Member not found: ${id}`);
+		}
+		return member;
+	}
+
 	async findByUserId(tenantId: string, userId: string): Promise<Member | null> {
 		return this.memberRepository.findByUserId(tenantId, userId);
 	}
@@ -57,6 +68,11 @@ export class MemberService {
 	): Promise<Member> {
 		await this.getById(tenantId, id);
 		return this.memberRepository.softDelete(tenantId, id, actorId);
+	}
+
+	async restore(tenantId: string, id: string): Promise<Member> {
+		await this.getByIdIncludingDeleted(tenantId, id);
+		return this.memberRepository.restore(tenantId, id);
 	}
 
 	async countForTenant(

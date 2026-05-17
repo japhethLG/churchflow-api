@@ -28,6 +28,7 @@ import {
 	ApiOkResponse,
 	ApiOperation,
 	ApiParam,
+	ApiQuery,
 	ApiTags,
 } from "@nestjs/swagger";
 import { DeleteResponseDto } from "@shared/dto/delete-response.dto";
@@ -46,6 +47,7 @@ import {
 	CampaignProgressResponseDto,
 	CampaignResponseDto,
 	CampaignWithItemsResponseDto,
+	RestorePreviewResponseDto,
 } from "./responses";
 
 // Tenant-management intent for campaigns. Admins create / edit / delete
@@ -100,15 +102,53 @@ export class CampaignTenantController {
 
 	@Get(":id")
 	@ApiOperation({ summary: "Get a campaign with its items (admin)" })
+	@ApiQuery({
+		name: "includeDeleted",
+		required: false,
+		type: Boolean,
+		description:
+			'Include soft-deleted items alongside active ones — "All" view of the campaign-items inline filter. Also surfaces the campaign itself if it is archived (banner-style detail view).',
+	})
+	@ApiQuery({
+		name: "onlyDeleted",
+		required: false,
+		type: Boolean,
+		description:
+			'Return ONLY soft-deleted items — "Deleted" view of the inline filter.',
+	})
 	@ApiOkResponse({ type: CampaignWithItemsResponseDto })
 	async getById(
 		@CurrentTenant() tenant: TenantContext,
 		@CurrentAbility() ability: AppAbility,
 		@Param("id") id: string,
+		@Query("includeDeleted") includeDeleted?: boolean,
+		@Query("onlyDeleted") onlyDeleted?: boolean,
 	): Promise<CampaignWithItemsResponseDto> {
-		const campaign = await this.campaignFeatureService.getById(tenant, id);
+		const campaign = await this.campaignFeatureService.getById(tenant, id, {
+			includeDeleted,
+			onlyDeleted,
+		});
 		assertCan(ability, "read", asSubject("Campaign", campaign));
 		return campaign as unknown as CampaignWithItemsResponseDto;
+	}
+
+	@Get(":id/restore-preview")
+	@ApiOperation({
+		summary:
+			"Count tombstones that would be restored alongside this campaign (admin only)",
+	})
+	@ApiOkResponse({ type: RestorePreviewResponseDto })
+	async restorePreview(
+		@CurrentTenant() tenant: TenantContext,
+		@CurrentAbility() ability: AppAbility,
+		@Param("id") id: string,
+	): Promise<RestorePreviewResponseDto> {
+		assertCan(ability, "restore", "Campaign");
+		const cascadeCount = await this.campaignFeatureService.getRestorePreview(
+			tenant,
+			id,
+		);
+		return { cascadeCount };
 	}
 
 	@Get(":id/progress")
@@ -170,7 +210,7 @@ export class CampaignTenantController {
 		@CurrentAbility() ability: AppAbility,
 		@Param("id") id: string,
 	): Promise<CampaignResponseDto> {
-		assertCan(ability, "update", "Campaign");
+		assertCan(ability, "restore", "Campaign");
 		return this.campaignFeatureService.restore(
 			user,
 			tenant,
@@ -232,5 +272,26 @@ export class CampaignTenantController {
 			itemId,
 		);
 		return { id: deleted.id };
+	}
+
+	@Post(":id/items/:itemId/restore")
+	@ApiOperation({
+		summary: "Restore a soft-deleted campaign item (admin only)",
+	})
+	@ApiOkResponse({ type: CampaignItemResponseDto })
+	async restoreItem(
+		@CurrentUser() user: AuthUser,
+		@CurrentTenant() tenant: TenantContext,
+		@CurrentAbility() ability: AppAbility,
+		@Param("id") campaignId: string,
+		@Param("itemId") itemId: string,
+	): Promise<CampaignItemResponseDto> {
+		assertCan(ability, "restore", "CampaignItem");
+		return this.campaignFeatureService.restoreItem(
+			user,
+			tenant,
+			campaignId,
+			itemId,
+		) as unknown as Promise<CampaignItemResponseDto>;
 	}
 }

@@ -1,5 +1,7 @@
 import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
 import {
+	applyStateFilter,
+	restore,
 	softDelete,
 	withDeleted,
 } from "@infrastructure/prisma-client/soft-delete";
@@ -26,19 +28,34 @@ export class CampaignItemRepository {
 		});
 	}
 
+	async findByIdIncludingDeleted(
+		tenantId: string,
+		id: string,
+	): Promise<CampaignItem | null> {
+		return this.prisma.campaignItem.findFirst(
+			withDeleted("CampaignItem", { where: { id, tenantId } }),
+		);
+	}
+
 	async findAll(
 		tenantId: string,
 		filters: CampaignItemFilters,
 	): Promise<CampaignItem[]> {
-		const where: Prisma.CampaignItemWhereInput = {
+		const baseWhere: Prisma.CampaignItemWhereInput = {
 			tenantId,
 			...(filters.campaignId ? { campaignId: filters.campaignId } : {}),
 		};
-
-		return this.prisma.campaignItem.findMany({
-			where,
-			orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-		});
+		const { where, wrap } = applyStateFilter(
+			"CampaignItem",
+			baseWhere,
+			filters,
+		);
+		return this.prisma.campaignItem.findMany(
+			wrap({
+				where,
+				orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }],
+			}),
+		);
 	}
 
 	async update(
@@ -62,6 +79,13 @@ export class CampaignItemRepository {
 			return tx.campaignItem.findFirstOrThrow(
 				withDeleted("CampaignItem", { where: { id, tenantId } }),
 			);
+		});
+	}
+
+	async restore(tenantId: string, id: string): Promise<CampaignItem> {
+		return this.prisma.$transaction(async (tx) => {
+			await restore(tx, "CampaignItem", { where: { id, tenantId } });
+			return tx.campaignItem.findFirstOrThrow({ where: { id, tenantId } });
 		});
 	}
 }

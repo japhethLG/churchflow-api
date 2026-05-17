@@ -1,19 +1,17 @@
-import { ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiPropertyOptional, IntersectionType } from "@nestjs/swagger";
 import { TransactionType } from "@prisma/client";
-import { DATE_UTC_EXAMPLE, ID_EXAMPLE } from "@shared/dto-examples";
-import { Type } from "class-transformer";
-import {
-	IsDate,
-	IsEnum,
-	IsInt,
-	IsOptional,
-	IsString,
-	Min,
-} from "class-validator";
+import { DateRangeRequestDto } from "@shared/dto/date-range.request.dto";
+import { PaginationRequestDto } from "@shared/dto/pagination.request.dto";
+import { ID_EXAMPLE } from "@shared/dto-examples";
+import { IsEnum, IsOptional, IsString } from "class-validator";
 
 // Self-service filters. memberId is forced to the authenticated tenant
 // context — members may still narrow by campaign, type, or date range.
-export class MyTransactionFiltersRequestDto {
+// `dateFrom`/`dateTo` bracket `Transaction.date`.
+export class MyTransactionFiltersRequestDto extends IntersectionType(
+	DateRangeRequestDto,
+	PaginationRequestDto,
+) {
 	@ApiPropertyOptional({ example: ID_EXAMPLE })
 	@IsOptional()
 	@IsString()
@@ -33,30 +31,4 @@ export class MyTransactionFiltersRequestDto {
 	@IsOptional()
 	@IsEnum(TransactionType)
 	type?: TransactionType;
-
-	@ApiPropertyOptional({ example: DATE_UTC_EXAMPLE })
-	@IsOptional()
-	@Type(() => Date)
-	@IsDate()
-	dateFrom?: Date;
-
-	@ApiPropertyOptional({ example: DATE_UTC_EXAMPLE })
-	@IsOptional()
-	@Type(() => Date)
-	@IsDate()
-	dateTo?: Date;
-
-	@ApiPropertyOptional({ example: 0 })
-	@IsOptional()
-	@Type(() => Number)
-	@IsInt()
-	@Min(0)
-	offset?: number;
-
-	@ApiPropertyOptional({ example: 50 })
-	@IsOptional()
-	@Type(() => Number)
-	@IsInt()
-	@Min(1)
-	limit?: number;
 }

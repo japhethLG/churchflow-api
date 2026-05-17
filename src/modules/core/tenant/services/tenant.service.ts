@@ -8,7 +8,11 @@ import {
 import { Tenant } from "@prisma/client";
 
 import { TenantRepository } from "../repository/tenant.repository";
-import { CreateTenantInput, UpdateTenantInput } from "../tenant.types";
+import {
+	CreateTenantInput,
+	TenantFilters,
+	UpdateTenantInput,
+} from "../tenant.types";
 
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/;
 const RESERVED_SLUGS = new Set([
@@ -63,8 +67,8 @@ export class TenantService {
 		return tenant;
 	}
 
-	async getAll(): Promise<Tenant[]> {
-		return this.tenantRepository.findAll();
+	async getAll(filters: TenantFilters = {}): Promise<Tenant[]> {
+		return this.tenantRepository.findAll(filters);
 	}
 
 	async countAll(): Promise<number> {

@@ -28,6 +28,7 @@ import {
 	ApiOkResponse,
 	ApiOperation,
 	ApiParam,
+	ApiQuery,
 	ApiTags,
 } from "@nestjs/swagger";
 import { DeleteResponseDto } from "@shared/dto/delete-response.dto";
@@ -104,13 +105,23 @@ export class PledgeTenantController {
 
 	@Get(":id")
 	@ApiOperation({ summary: "Get a pledge by id (admin only)" })
+	@ApiQuery({
+		name: "includeDeleted",
+		required: false,
+		type: Boolean,
+		description:
+			"Return the pledge even if soft-deleted (banner-style archived view).",
+	})
 	@ApiOkResponse({ type: PledgeResponseDto })
 	async getById(
 		@CurrentTenant() tenant: TenantContext,
 		@CurrentAbility() ability: AppAbility,
 		@Param("id") id: string,
+		@Query("includeDeleted") includeDeleted?: boolean,
 	): Promise<PledgeResponseDto> {
-		const pledge = await this.pledgeFeatureService.getById(tenant, id);
+		const pledge = await this.pledgeFeatureService.getById(tenant, id, {
+			includeDeleted,
+		});
 		assertCan(ability, "read", asSubject("Pledge", pledge));
 		return pledge as unknown as PledgeResponseDto;
 	}
@@ -148,5 +159,22 @@ export class PledgeTenantController {
 		assertCan(ability, "delete", asSubject("Pledge", existing));
 		const deleted = await this.pledgeFeatureService.delete(user, tenant, id);
 		return { id: deleted.id };
+	}
+
+	@Post(":id/restore")
+	@ApiOperation({ summary: "Restore a soft-deleted pledge (admin only)" })
+	@ApiOkResponse({ type: PledgeResponseDto })
+	async restore(
+		@CurrentUser() user: AuthUser,
+		@CurrentTenant() tenant: TenantContext,
+		@CurrentAbility() ability: AppAbility,
+		@Param("id") id: string,
+	): Promise<PledgeResponseDto> {
+		assertCan(ability, "restore", "Pledge");
+		return this.pledgeFeatureService.restore(
+			user,
+			tenant,
+			id,
+		) as unknown as Promise<PledgeResponseDto>;
 	}
 }

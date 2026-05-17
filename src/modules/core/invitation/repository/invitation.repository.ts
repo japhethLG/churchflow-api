@@ -1,9 +1,17 @@
 import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
 import { Injectable } from "@nestjs/common";
-import { type Invitation, InvitationStatus } from "@prisma/client";
+import { type Invitation, InvitationStatus, Prisma } from "@prisma/client";
 import dayjs from "@shared/dayjs";
 
-import { CreateInvitationInput } from "../invitation.types";
+import {
+	CreateInvitationInput,
+	InvitationFilters,
+} from "../invitation.types";
+
+export interface InvitationListResult {
+	items: Invitation[];
+	total: number;
+}
 
 @Injectable()
 export class InvitationRepository {
@@ -34,6 +42,38 @@ export class InvitationRepository {
 			where: { tenantId, status: InvitationStatus.PENDING },
 			orderBy: { createdAt: "desc" },
 		});
+	}
+
+	async findAllForTenant(
+		tenantId: string,
+		filters: InvitationFilters,
+	): Promise<InvitationListResult> {
+		const createdAt =
+			filters.dateFrom || filters.dateTo
+				? {
+						...(filters.dateFrom ? { gte: filters.dateFrom } : {}),
+						...(filters.dateTo ? { lte: filters.dateTo } : {}),
+					}
+				: undefined;
+		const where: Prisma.InvitationWhereInput = {
+			tenantId,
+			...(filters.status ? { status: filters.status } : {}),
+			...(filters.role ? { role: filters.role } : {}),
+			...(filters.search
+				? { email: { contains: filters.search, mode: "insensitive" } }
+				: {}),
+			...(createdAt ? { createdAt } : {}),
+		};
+		const [items, total] = await Promise.all([
+			this.prisma.invitation.findMany({
+				where,
+				orderBy: { createdAt: "desc" },
+				skip: filters.offset,
+				take: filters.limit,
+			}),
+			this.prisma.invitation.count({ where }),
+		]);
+		return { items, total };
 	}
 
 	// Used for rate-limiting: how many invitations has this tenant issued in
