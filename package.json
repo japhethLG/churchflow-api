@@ -12,6 +12,7 @@
 		"lint": "biome lint .",
 		"format": "biome format . --write",
 		"check": "biome check --write .",
+		"check:staged": "lint-staged",
 		"prisma:generate": "prisma generate",
 		"prisma:migrate": "prisma migrate dev",
 		"prisma:deploy": "prisma migrate deploy",
@@ -22,6 +23,11 @@
 		"test:integration": "vitest run",
 		"test:integration:watch": "vitest",
 		"prepare": "husky"
+	},
+	"lint-staged": {
+		"*.{ts,tsx,js,jsx,mjs,cjs,json}": [
+			"biome check --write --no-errors-on-unmatched"
+		]
 	},
 	"dependencies": {
 		"@casl/ability": "^6.8.1",
@@ -60,6 +66,7 @@
 		"@types/node": "^22.0.0",
 		"@types/nodemailer": "^8.0.0",
 		"husky": "^9.1.7",
+		"lint-staged": "^16.4.0",
 		"prisma": "^7.5.0",
 		"ts-loader": "^9.5.1",
 		"ts-node": "^10.9.2",
