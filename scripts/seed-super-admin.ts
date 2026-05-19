@@ -43,16 +43,6 @@ function initAdmin(): void {
 		return;
 	}
 
-	// Matches FirebaseAdminService.loadCredential — prefer a service-account
-	// path, fall back to the three-variable form. Stays in sync so dev and
-	// CLI use the same credentials.
-	const path = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
-	if (path) {
-		const file = JSON.parse(require("node:fs").readFileSync(path, "utf-8"));
-		initializeApp({ credential: cert(file) });
-		return;
-	}
-
 	initializeApp({
 		credential: cert({
 			projectId: requireEnv("FIREBASE_PROJECT_ID"),

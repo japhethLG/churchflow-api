@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import * as admin from "firebase-admin";
@@ -50,13 +49,6 @@ export class FirebaseAdminService implements OnModuleInit {
 	}
 
 	private loadCredential(): admin.credential.Credential {
-		const path = this.config.get<string>("FIREBASE_SERVICE_ACCOUNT_PATH");
-
-		if (path) {
-			const file = JSON.parse(readFileSync(path, "utf-8"));
-			return admin.credential.cert(file);
-		}
-
 		const projectId = this.config.get<string>("FIREBASE_PROJECT_ID");
 		const clientEmail = this.config.get<string>("FIREBASE_CLIENT_EMAIL");
 		const privateKey = this.config
@@ -65,7 +57,7 @@ export class FirebaseAdminService implements OnModuleInit {
 
 		if (!projectId || !clientEmail || !privateKey) {
 			throw new Error(
-				"Firebase credentials missing. Set FIREBASE_SERVICE_ACCOUNT_PATH or FIREBASE_{PROJECT_ID,CLIENT_EMAIL,PRIVATE_KEY}.",
+				"Firebase credentials missing. Set FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY.",
 			);
 		}
 

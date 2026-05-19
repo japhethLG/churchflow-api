@@ -830,9 +830,10 @@ Global interceptors (from [`main.ts`](src/main.ts)):
 
 ### 9.4 Firebase credentials
 
-`FIREBASE_SERVICE_ACCOUNT_PATH` points to a service-account JSON, OR
-set `FIREBASE_PROJECT_ID` + `FIREBASE_CLIENT_EMAIL` + `FIREBASE_PRIVATE_KEY`.
-See [.env.example](.env.example).
+Set `FIREBASE_PROJECT_ID` + `FIREBASE_CLIENT_EMAIL` + `FIREBASE_PRIVATE_KEY`
+from the service-account JSON. `FIREBASE_PRIVATE_KEY` uses `\n` escapes
+inside double quotes (the service unescapes them at boot). See
+[.env.example](.env.example).
 
 ### 9.5 The `X-Claims-Refreshed` contract
 
