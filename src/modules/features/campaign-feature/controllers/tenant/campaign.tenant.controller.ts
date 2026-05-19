@@ -55,7 +55,11 @@ import {
 // /me/campaigns instead — those are read-only and reflect the same data.
 @ApiTags("campaigns (tenant)")
 @ApiBearerAuth("Bearer")
-@ApiParam({ name: "tenantId", description: "Tenant UUID or slug" })
+@ApiParam({
+	name: "tenantId",
+	type: String,
+	description: "Tenant UUID or slug",
+})
 @UseGuards(TenantGuard)
 @Controller("tenants/:tenantId/campaigns")
 export class CampaignTenantController {

@@ -92,7 +92,11 @@ export class TenantPlatformController {
 
 	@Patch(":tenantId/slug")
 	@ApiOperation({ summary: "Rename a church slug (super-admin only)" })
-	@ApiParam({ name: "tenantId", description: "Tenant UUID or slug" })
+	@ApiParam({
+		name: "tenantId",
+		type: String,
+		description: "Tenant UUID or slug",
+	})
 	@ApiOkResponse({ type: TenantResponseDto })
 	async rename(
 		@CurrentUser() user: AuthUser,
@@ -111,7 +115,11 @@ export class TenantPlatformController {
 
 	@Delete(":tenantId")
 	@ApiOperation({ summary: "Soft-delete a church (super-admin only)" })
-	@ApiParam({ name: "tenantId", description: "Tenant UUID or slug" })
+	@ApiParam({
+		name: "tenantId",
+		type: String,
+		description: "Tenant UUID or slug",
+	})
 	@ApiOkResponse({ type: DeleteResponseDto })
 	async delete(
 		@CurrentUser() user: AuthUser,

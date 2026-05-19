@@ -41,7 +41,11 @@ import { InvitationListResponseDto, InvitationResponseDto } from "./responses";
 // interact with invitations only through the public lookup/accept flow.
 @ApiTags("invitations (tenant)")
 @ApiBearerAuth("Bearer")
-@ApiParam({ name: "tenantId", description: "Tenant UUID or slug" })
+@ApiParam({
+	name: "tenantId",
+	type: String,
+	description: "Tenant UUID or slug",
+})
 @UseGuards(TenantGuard)
 @Controller("tenants/:tenantId/invitations")
 export class InvitationTenantController {

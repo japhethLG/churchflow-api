@@ -25,7 +25,11 @@ import { MyChurchResponseDto } from "./responses";
 // the admin-management one at /tenants/:tenantId.
 @ApiTags("tenants (self)")
 @ApiBearerAuth("Bearer")
-@ApiParam({ name: "tenantId", description: "Tenant UUID or slug" })
+@ApiParam({
+	name: "tenantId",
+	type: String,
+	description: "Tenant UUID or slug",
+})
 @UseGuards(TenantGuard)
 @Controller("tenants/:tenantId/me/church")
 export class TenantSelfController {

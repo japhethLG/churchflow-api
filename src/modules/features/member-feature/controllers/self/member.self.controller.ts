@@ -39,7 +39,11 @@ import { MyProfileResponseDto } from "./responses";
 // matches the existing behavior of the legacy /members/me endpoint.
 @ApiTags("members (self)")
 @ApiBearerAuth("Bearer")
-@ApiParam({ name: "tenantId", description: "Tenant UUID or slug" })
+@ApiParam({
+	name: "tenantId",
+	type: String,
+	description: "Tenant UUID or slug",
+})
 @UseGuards(TenantGuard)
 @Controller("tenants/:tenantId/me/profile")
 export class MemberSelfController {

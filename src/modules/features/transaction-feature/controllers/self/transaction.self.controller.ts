@@ -35,7 +35,11 @@ import {
 // the tenant endpoints.
 @ApiTags("transactions (self)")
 @ApiBearerAuth("Bearer")
-@ApiParam({ name: "tenantId", description: "Tenant UUID or slug" })
+@ApiParam({
+	name: "tenantId",
+	type: String,
+	description: "Tenant UUID or slug",
+})
 @UseGuards(TenantGuard)
 @Controller("tenants/:tenantId/me/transactions")
 export class TransactionSelfController {

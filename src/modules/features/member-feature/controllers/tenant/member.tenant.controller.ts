@@ -52,7 +52,11 @@ import {
 // profile through /me/profile instead.
 @ApiTags("members (tenant)")
 @ApiBearerAuth("Bearer")
-@ApiParam({ name: "tenantId", description: "Tenant UUID or slug" })
+@ApiParam({
+	name: "tenantId",
+	type: String,
+	description: "Tenant UUID or slug",
+})
 @UseGuards(TenantGuard)
 @Controller("tenants/:tenantId/members")
 export class MemberTenantController {

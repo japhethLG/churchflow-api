@@ -53,7 +53,11 @@ import {
 // edit transactions — those are recorded by admins as the church's books.
 @ApiTags("transactions (tenant)")
 @ApiBearerAuth("Bearer")
-@ApiParam({ name: "tenantId", description: "Tenant UUID or slug" })
+@ApiParam({
+	name: "tenantId",
+	type: String,
+	description: "Tenant UUID or slug",
+})
 @UseGuards(TenantGuard)
 @Controller("tenants/:tenantId/transactions")
 export class TransactionTenantController {

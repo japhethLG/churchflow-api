@@ -50,7 +50,11 @@ import { MyPledgeListResponseDto, MyPledgeResponseDto } from "./responses";
 // defense-in-depth.
 @ApiTags("pledges (self)")
 @ApiBearerAuth("Bearer")
-@ApiParam({ name: "tenantId", description: "Tenant UUID or slug" })
+@ApiParam({
+	name: "tenantId",
+	type: String,
+	description: "Tenant UUID or slug",
+})
 @UseGuards(TenantGuard)
 @Controller("tenants/:tenantId/me/pledges")
 export class PledgeSelfController {

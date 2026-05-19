@@ -50,7 +50,11 @@ import { PledgeListResponseDto, PledgeResponseDto } from "./responses";
 // controller path itself does not gate by role — the ability factory does.
 @ApiTags("pledges (tenant)")
 @ApiBearerAuth("Bearer")
-@ApiParam({ name: "tenantId", description: "Tenant UUID or slug" })
+@ApiParam({
+	name: "tenantId",
+	type: String,
+	description: "Tenant UUID or slug",
+})
 @UseGuards(TenantGuard)
 @Controller("tenants/:tenantId/pledges")
 export class PledgeTenantController {

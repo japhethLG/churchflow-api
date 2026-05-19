@@ -31,7 +31,11 @@ import {
 // (those routes live on the tenant controller).
 @ApiTags("campaigns (self)")
 @ApiBearerAuth("Bearer")
-@ApiParam({ name: "tenantId", description: "Tenant UUID or slug" })
+@ApiParam({
+	name: "tenantId",
+	type: String,
+	description: "Tenant UUID or slug",
+})
 @UseGuards(TenantGuard)
 @Controller("tenants/:tenantId/me/campaigns")
 export class CampaignSelfController {
