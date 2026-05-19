@@ -7,7 +7,7 @@ RUN npm ci
 FROM deps AS builder
 WORKDIR /app
 COPY . .
-RUN npx prisma generate
+RUN DATABASE_URL="postgresql://placeholder:placeholder@placeholder:5432/placeholder" npx prisma generate
 RUN npm run build
 
 FROM node:22-alpine AS runner
