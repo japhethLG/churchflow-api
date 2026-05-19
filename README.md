@@ -6,7 +6,7 @@ runs pledge-based fundraising campaigns (building funds, mission trips)
 broken into line items members can commit to individually.
 
 This repo is the API for the sibling Next.js frontend at `../church-app/`.
-The product spec lives in [`../church-app/SPECS.md`](../church-app/SPECS.md).
+The product spec lives in [`../church-app/SPECS.md`](../church-app/SPECS.md). 
 
 ## Stack
 
