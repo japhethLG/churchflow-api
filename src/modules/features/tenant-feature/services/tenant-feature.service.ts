@@ -1,11 +1,18 @@
 import { AuthUser } from "@infrastructure/firebase-auth/types/auth-user.type";
 import { AuditService } from "@modules/core/audit/services/audit.service";
+import { CampaignService } from "@modules/core/campaign/services/campaign.service";
 import { MemberService } from "@modules/core/member/services/member.service";
 import { TenantService } from "@modules/core/tenant/services/tenant.service";
 import { TransactionService } from "@modules/core/transaction/services/transaction.service";
 import { UserService } from "@modules/core/user/services/user.service";
 import { Injectable } from "@nestjs/common";
-import { AuditAction, MemberRole, type Tenant } from "@prisma/client";
+import {
+	AuditAction,
+	CampaignStatus,
+	MemberRole,
+	type Tenant,
+	type TransactionType,
+} from "@prisma/client";
 import dayjs from "@shared/dayjs";
 
 // Internal DTOs — controllers translate their HTTP shapes into these.
@@ -46,12 +53,29 @@ export interface TenantListItem extends Tenant {
 	giftsMtdTotal: number;
 }
 
+export interface MyChurchSummary {
+	receivedThisMonth: number;
+	receivedThisMonthCount: number;
+	receivedYearToDate: number;
+	receivedLastMonth: number;
+	byTypeThisMonth: Array<{
+		type: TransactionType;
+		total: number;
+		count: number;
+	}>;
+	activeCampaignCount: number;
+	upcomingCampaignCount: number;
+	memberCount: number;
+	newMembersThisMonth: number;
+}
+
 @Injectable()
 export class TenantFeatureService {
 	constructor(
 		private readonly tenantService: TenantService,
 		private readonly memberService: MemberService,
 		private readonly transactionService: TransactionService,
+		private readonly campaignService: CampaignService,
 		private readonly userService: UserService,
 		private readonly auditService: AuditService,
 	) {}
@@ -115,6 +139,63 @@ export class TenantFeatureService {
 
 	async getByIdOrSlug(idOrSlug: string): Promise<Tenant> {
 		return this.tenantService.getByIdOrSlug(idOrSlug);
+	}
+
+	// Members-safe church pulse — aggregate sums + counts only. No
+	// per-row reads of other members' transactions or pledges. The
+	// "this month" window is UTC start-of-month inclusive → now; "last
+	// month" is start-of-prior-month → end-of-prior-month.
+	async getMyChurchSummary(tenantId: string): Promise<MyChurchSummary> {
+		const now = dayjs.utc();
+		const monthStart = now.startOf("month").toDate();
+		const monthEnd = now.endOf("day").toDate();
+		const lastMonthStart = now.subtract(1, "month").startOf("month").toDate();
+		const lastMonthEnd = now.subtract(1, "month").endOf("month").toDate();
+		const yearStart = now.startOf("year").toDate();
+
+		const [
+			thisMonth,
+			lastMonth,
+			yearToDate,
+			activeCampaigns,
+			upcomingCampaigns,
+			memberCount,
+			newMembers,
+		] = await Promise.all([
+			this.transactionService.summary(tenantId, monthStart, monthEnd),
+			this.transactionService.summary(tenantId, lastMonthStart, lastMonthEnd),
+			this.transactionService.summary(tenantId, yearStart, monthEnd),
+			this.campaignService.getAll(tenantId, {
+				status: CampaignStatus.ACTIVE,
+				limit: 1,
+			}),
+			this.campaignService.getAll(tenantId, {
+				status: CampaignStatus.DRAFT,
+				limit: 1,
+			}),
+			this.memberService.countForTenant(tenantId),
+			// New members "this month" = createdAt within the current calendar
+			// month. countForTenant doesn't take a date filter today, so we
+			// list with a wide limit and count in JS. Tenants are bounded by
+			// human attendance — fine for a once-per-load metric.
+			this.memberService.getAll(tenantId, { limit: 2000 }),
+		]);
+
+		const newMembersThisMonth = newMembers.items.filter((m) =>
+			dayjs(m.createdAt).isAfter(monthStart),
+		).length;
+
+		return {
+			receivedThisMonth: thisMonth.total,
+			receivedThisMonthCount: thisMonth.count,
+			receivedYearToDate: yearToDate.total,
+			receivedLastMonth: lastMonth.total,
+			byTypeThisMonth: thisMonth.byType,
+			activeCampaignCount: activeCampaigns.total,
+			upcomingCampaignCount: upcomingCampaigns.total,
+			memberCount,
+			newMembersThisMonth,
+		};
 	}
 
 	async update(

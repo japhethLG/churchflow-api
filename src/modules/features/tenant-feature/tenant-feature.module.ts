@@ -1,4 +1,5 @@
 import { AuditCoreModule } from "@modules/core/audit/audit.module";
+import { CampaignCoreModule } from "@modules/core/campaign/campaign.module";
 import { MemberCoreModule } from "@modules/core/member/member.module";
 import { TenantCoreModule } from "@modules/core/tenant/tenant.module";
 import { TransactionCoreModule } from "@modules/core/transaction/transaction.module";
@@ -15,6 +16,7 @@ import { TenantFeatureService } from "./services/tenant-feature.service";
 		TenantCoreModule,
 		MemberCoreModule,
 		TransactionCoreModule,
+		CampaignCoreModule,
 		UserCoreModule,
 		AuditCoreModule,
 	],

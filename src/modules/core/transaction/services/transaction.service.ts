@@ -72,8 +72,14 @@ export class TransactionService {
 		tenantId: string,
 		dateFrom: Date,
 		dateTo: Date,
+		options: { memberId?: string } = {},
 	): Promise<TransactionSummaryResult> {
-		return this.transactionRepository.summary(tenantId, dateFrom, dateTo);
+		return this.transactionRepository.summary(
+			tenantId,
+			dateFrom,
+			dateTo,
+			options,
+		);
 	}
 
 	async update(

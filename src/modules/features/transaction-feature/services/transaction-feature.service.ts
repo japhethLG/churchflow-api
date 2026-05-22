@@ -236,11 +236,21 @@ export class TransactionFeatureService {
 	// - Otherwise `months` (1..60, default 12) produces a rolling window
 	//   that ends today (UTC) and begins at the start of N months back so
 	//   the first month bucket is always full.
+	// - `memberId` is the segregation point for self-intent callers — the
+	//   self controller passes `tenant.memberId`; admins leave it
+	//   undefined for tenant-wide aggregates. This is pure transactions
+	//   logic and never references pledge.status, so the pledge status
+	//   derivation can be swapped later without touching this surface.
 	async summary(
 		tenant: TenantContext,
-		options: { dateFrom?: Date; dateTo?: Date; months?: number } = {},
+		options: {
+			dateFrom?: Date;
+			dateTo?: Date;
+			months?: number;
+			memberId?: string;
+		} = {},
 	): Promise<TransactionSummaryResult> {
-		const { dateFrom, dateTo, months } = options;
+		const { dateFrom, dateTo, months, memberId } = options;
 		const now = dayjs.utc();
 		const resolvedTo =
 			dateTo ?? (dateFrom ? now.endOf("month").toDate() : null);
@@ -252,6 +262,7 @@ export class TransactionFeatureService {
 				tenant.tenantId,
 				resolvedFrom,
 				resolvedTo,
+				{ memberId },
 			);
 		}
 
@@ -265,6 +276,7 @@ export class TransactionFeatureService {
 			tenant.tenantId,
 			fallbackFrom,
 			fallbackTo,
+			{ memberId },
 		);
 	}
 

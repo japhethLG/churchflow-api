@@ -24,10 +24,14 @@ import {
 } from "@nestjs/swagger";
 
 import { TransactionFeatureService } from "../../services/transaction-feature.service";
-import { MyTransactionFiltersRequestDto } from "./requests";
+import {
+	MyTransactionFiltersRequestDto,
+	MyTransactionSummaryQueryRequestDto,
+} from "./requests";
 import {
 	MyTransactionListResponseDto,
 	MyTransactionResponseDto,
+	MyTransactionSummaryResponseDto,
 } from "./responses";
 
 // Self-service intent for transactions. Read-only — members do not create
@@ -70,6 +74,29 @@ export class TransactionSelfController {
 				sum: result.sum,
 			},
 		};
+	}
+
+	@Get("summary")
+	@ApiOperation({
+		summary: "Aggregate the authenticated member's own giving over time",
+		description:
+			"Returns the caller's own totals-by-type + monthly trend, scoped server-side via tenant.memberId. Drives the member Insights page.",
+	})
+	@ApiOkResponse({ type: MyTransactionSummaryResponseDto })
+	async summary(
+		@CurrentTenant() tenant: TenantContext,
+		@CurrentAbility() ability: AppAbility,
+		@Query() query: MyTransactionSummaryQueryRequestDto,
+	): Promise<MyTransactionSummaryResponseDto> {
+		const memberId = this.requireMemberContext(tenant);
+		assertCan(ability, "read", asSubject("Transaction", { memberId }));
+		const result = await this.transactionFeatureService.summary(tenant, {
+			dateFrom: query.dateFrom,
+			dateTo: query.dateTo,
+			months: query.months,
+			memberId,
+		});
+		return result as unknown as MyTransactionSummaryResponseDto;
 	}
 
 	@Get(":id")

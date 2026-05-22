@@ -25,6 +25,22 @@ export interface PledgeListResult {
 	sum: number;
 }
 
+// Derive the surfaced status from stored status + payment totals.
+// Active pledges auto-upgrade to FULFILLED when transactions cover the
+// pledged amount — stored status is never persisted on this transition
+// because paidAmount is itself derived. Explicit CANCELLED and admin-set
+// FULFILLED are preserved (a forgiven $0-paid pledge stays FULFILLED).
+const deriveStatus = (
+	storedStatus: Pledge["status"],
+	paidAmount: number,
+	pledgedAmount: number,
+): Pledge["status"] => {
+	if (storedStatus === "ACTIVE" && paidAmount >= pledgedAmount) {
+		return "FULFILLED";
+	}
+	return storedStatus;
+};
+
 @Injectable()
 export class PledgeRepository {
 	constructor(private readonly prisma: PrismaClientService) {}
@@ -66,10 +82,12 @@ export class PledgeRepository {
 			return null;
 		}
 		const paidAmount = Number(aggregate._sum.amount ?? 0);
+		const pledgedAmount = Number(pledge.pledgedAmount);
 		return {
 			...pledge,
+			status: deriveStatus(pledge.status, paidAmount, pledgedAmount),
 			paidAmount,
-			remainingAmount: Math.max(0, Number(pledge.pledgedAmount) - paidAmount),
+			remainingAmount: Math.max(0, pledgedAmount - paidAmount),
 		};
 	}
 
@@ -84,15 +102,55 @@ export class PledgeRepository {
 						...(filters.dateTo ? { lte: filters.dateTo } : {}),
 					}
 				: undefined;
-		const baseWhere: Prisma.PledgeWhereInput = {
+		const baseWhereNoStatus: Prisma.PledgeWhereInput = {
 			tenantId,
 			...(filters.campaignId ? { campaignId: filters.campaignId } : {}),
 			...(filters.campaignItemId
 				? { campaignItemId: filters.campaignItemId }
 				: {}),
 			...(filters.memberId ? { memberId: filters.memberId } : {}),
-			...(filters.status ? { status: filters.status } : {}),
 			...(createdAt ? { createdAt } : {}),
+		};
+
+		// Status filter must consider the derived state. A stored-ACTIVE
+		// pledge whose transactions cover `pledgedAmount` is *displayed* as
+		// FULFILLED (see deriveStatus above); the filter has to follow that
+		// translation or callers see incoherent rows ("status=ACTIVE returned
+		// a FULFILLED row"). We resolve the set of auto-fulfilled ids in JS
+		// — there is no Prisma where-syntax for "sum of relation >= column".
+		const autoFulfilledIds =
+			filters.status === "ACTIVE" || filters.status === "FULFILLED"
+				? await this.findAutoFulfilledIds(baseWhereNoStatus, filters)
+				: [];
+
+		const statusWhere: Prisma.PledgeWhereInput = (() => {
+			if (!filters.status) {
+				return {};
+			}
+			if (filters.status === "ACTIVE") {
+				return {
+					status: "ACTIVE",
+					...(autoFulfilledIds.length > 0
+						? { id: { notIn: autoFulfilledIds } }
+						: {}),
+				};
+			}
+			if (filters.status === "FULFILLED") {
+				return {
+					OR: [
+						{ status: "FULFILLED" },
+						...(autoFulfilledIds.length > 0
+							? [{ id: { in: autoFulfilledIds } }]
+							: []),
+					],
+				};
+			}
+			return { status: filters.status };
+		})();
+
+		const baseWhere: Prisma.PledgeWhereInput = {
+			...baseWhereNoStatus,
+			...statusWhere,
 		};
 		const { where, wrap } = applyStateFilter("Pledge", baseWhere, filters);
 
@@ -129,10 +187,12 @@ export class PledgeRepository {
 
 		const itemsWithAmounts: PledgeWithAmounts[] = items.map((p) => {
 			const paidAmount = paidByPledgeId[p.id] ?? 0;
+			const pledgedAmount = Number(p.pledgedAmount);
 			return {
 				...p,
+				status: deriveStatus(p.status, paidAmount, pledgedAmount),
 				paidAmount,
-				remainingAmount: Math.max(0, Number(p.pledgedAmount) - paidAmount),
+				remainingAmount: Math.max(0, pledgedAmount - paidAmount),
 			};
 		});
 
@@ -141,6 +201,41 @@ export class PledgeRepository {
 			total,
 			sum: Number(aggregate._sum.pledgedAmount ?? 0),
 		};
+	}
+
+	// Returns the ids of stored-ACTIVE pledges in the given filter scope
+	// whose transaction sums already cover the pledged amount — i.e. the
+	// rows that `deriveStatus` will surface as FULFILLED. Used by the
+	// status filter to keep SQL-side pagination correct.
+	private async findAutoFulfilledIds(
+		baseWhereNoStatus: Prisma.PledgeWhereInput,
+		filters: PledgeFilters,
+	): Promise<string[]> {
+		const { where, wrap } = applyStateFilter(
+			"Pledge",
+			{ ...baseWhereNoStatus, status: "ACTIVE" as const },
+			filters,
+		);
+		const candidates = await this.prisma.pledge.findMany(
+			wrap({ where, select: { id: true, pledgedAmount: true } }),
+		);
+		if (candidates.length === 0) {
+			return [];
+		}
+		const ids = candidates.map((c) => c.id);
+		const paidGroups = await this.prisma.transaction.groupBy({
+			by: ["pledgeId"],
+			where: { pledgeId: { in: ids } },
+			_sum: { amount: true },
+		});
+		const paidById = Object.fromEntries(
+			paidGroups
+				.filter((g) => g.pledgeId !== null)
+				.map((g) => [g.pledgeId as string, Number(g._sum.amount ?? 0)]),
+		);
+		return candidates
+			.filter((c) => (paidById[c.id] ?? 0) >= Number(c.pledgedAmount))
+			.map((c) => c.id);
 	}
 
 	async update(

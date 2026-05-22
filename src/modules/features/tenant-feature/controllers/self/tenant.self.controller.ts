@@ -17,7 +17,7 @@ import {
 } from "@nestjs/swagger";
 
 import { TenantFeatureService } from "../../services/tenant-feature.service";
-import { MyChurchResponseDto } from "./responses";
+import { MyChurchResponseDto, MyChurchSummaryResponseDto } from "./responses";
 
 // Self-service intent for tenants. Read-only — exposes the caller's
 // church profile to the member. Admins viewing their own church for
@@ -49,5 +49,29 @@ export class TenantSelfController {
 		);
 		assertCan(ability, "read", asSubject("Tenant", church));
 		return church as unknown as MyChurchResponseDto;
+	}
+
+	@Get("summary")
+	@ApiOperation({
+		summary:
+			"Aggregate church snapshot for the member dashboard (totals + counts only)",
+	})
+	@ApiOkResponse({ type: MyChurchSummaryResponseDto })
+	async getMyChurchSummary(
+		@CurrentTenant() tenant: TenantContext,
+		@CurrentAbility() ability: AppAbility,
+	): Promise<MyChurchSummaryResponseDto> {
+		// Authorize against the tenant subject — same access rule as the
+		// church profile read above. Any tenant member (or super-admin)
+		// can read; the data is intentionally aggregate-only so there is
+		// no per-row privacy concern.
+		const church = await this.tenantFeatureService.getByIdOrSlug(
+			tenant.tenantId,
+		);
+		assertCan(ability, "read", asSubject("Tenant", church));
+		const summary = await this.tenantFeatureService.getMyChurchSummary(
+			tenant.tenantId,
+		);
+		return summary as unknown as MyChurchSummaryResponseDto;
 	}
 }

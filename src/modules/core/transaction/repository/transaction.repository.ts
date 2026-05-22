@@ -160,14 +160,19 @@ export class TransactionRepository {
 		return { items, total, sum: Number(aggregate._sum.amount ?? 0) };
 	}
 
+	// Optional `memberId` filter is the entry point for member-scoped
+	// summaries (self-intent endpoint). Pure transactions aggregation —
+	// independent of any pledge status logic.
 	async summary(
 		tenantId: string,
 		dateFrom: Date,
 		dateTo: Date,
+		options: { memberId?: string } = {},
 	): Promise<TransactionSummaryResult> {
 		const where: Prisma.TransactionWhereInput = {
 			tenantId,
 			date: { gte: dateFrom, lte: dateTo },
+			...(options.memberId ? { memberId: options.memberId } : {}),
 		};
 
 		const [aggregate, byTypeRaw, rows] = await Promise.all([
