@@ -1,7 +1,8 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { DateRangeRequestDto } from "@shared/dto/date-range.request.dto";
+import { ID_EXAMPLE } from "@shared/dto-examples";
 import { Type } from "class-transformer";
-import { IsInt, IsOptional, Max, Min } from "class-validator";
+import { IsInt, IsOptional, IsString, Max, Min } from "class-validator";
 
 // Query DTO for the admin transaction summary endpoint. If `dateFrom`
 // / `dateTo` are supplied (either or both), the feature service uses
@@ -24,4 +25,13 @@ export class TransactionSummaryQueryRequestDto extends DateRangeRequestDto {
 	@Min(1)
 	@Max(60)
 	months?: number;
+
+	@ApiPropertyOptional({
+		example: ID_EXAMPLE,
+		description:
+			"Narrow the summary to a single member. Used by admin member-detail pages to render the same donut + table the dashboard uses, but scoped to one member.",
+	})
+	@IsOptional()
+	@IsString()
+	memberId?: string;
 }

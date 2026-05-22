@@ -153,6 +153,7 @@ export class TransactionTenantController {
 			dateFrom: query.dateFrom,
 			dateTo: query.dateTo,
 			months: query.months,
+			memberId: query.memberId,
 		}) as unknown as Promise<TransactionSummaryResponseDto>;
 	}
 
