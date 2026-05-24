@@ -15,4 +15,11 @@ export class MyTransactionSummaryByTypeDto {
 	@Expose()
 	@ApiProperty({ example: 12 })
 	count!: number;
+
+	@Expose()
+	@ApiProperty({
+		example: AMOUNT_EXAMPLE,
+		description: "Average gift amount in this type (total / count).",
+	})
+	avg!: number;
 }

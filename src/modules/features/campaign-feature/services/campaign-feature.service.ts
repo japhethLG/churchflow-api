@@ -74,6 +74,17 @@ export interface CampaignProgress {
 	items: CampaignItemProgress[];
 }
 
+// Compact progress shape for the batch endpoint. Omits the per-item
+// breakdown — callers that need per-item totals fetch the single
+// /progress endpoint instead.
+export interface CampaignProgressBatchEntry {
+	campaignId: string;
+	goalAmount: number;
+	pledgedAmount: number;
+	raisedAmount: number;
+	pledgeCount: number;
+}
+
 @Injectable()
 export class CampaignFeatureService {
 	constructor(
@@ -283,6 +294,29 @@ export class CampaignFeatureService {
 			entityId: restored.id,
 		});
 		return restored;
+	}
+
+	// Batch version: returns pledged + raised totals for many campaigns
+	// in one roundtrip. The dashboard's outstanding-pledges and deadline-
+	// watch cards used to fan-out N individual /progress requests; this
+	// endpoint collapses them.
+	async progressMany(
+		tenant: TenantContext,
+		campaignIds: string[],
+	): Promise<CampaignProgressBatchEntry[]> {
+		const map = await this.campaignService.getProgressMany(
+			tenant.tenantId,
+			campaignIds,
+		);
+		return campaignIds.map((id) => {
+			const bucket = map.get(id) ?? {
+				goalAmount: 0,
+				pledgedAmount: 0,
+				pledgeCount: 0,
+				raisedAmount: 0,
+			};
+			return { campaignId: id, ...bucket };
+		});
 	}
 
 	// Per-campaign progress summary: goal (sum of items), pledged totals,

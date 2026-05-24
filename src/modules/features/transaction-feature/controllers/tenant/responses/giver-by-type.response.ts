@@ -3,23 +3,23 @@ import { TransactionType } from "@prisma/client";
 import { AMOUNT_EXAMPLE } from "@shared/dto-examples";
 import { Expose } from "class-transformer";
 
-export class TransactionSummaryByTypeDto {
+export class GiverByTypeDto {
 	@Expose()
 	@ApiProperty({ enum: TransactionType })
 	type!: TransactionType;
 
 	@Expose()
 	@ApiProperty({ example: AMOUNT_EXAMPLE })
-	total!: number;
+	amount!: number;
 
 	@Expose()
-	@ApiProperty({ example: 12 })
+	@ApiProperty({ example: 5 })
 	count!: number;
 
 	@Expose()
 	@ApiProperty({
-		example: AMOUNT_EXAMPLE,
-		description: "Average gift amount in this type (total / count).",
+		example: 0.6,
+		description: "Fraction of this giver's total in this type (0..1).",
 	})
-	avg!: number;
+	share!: number;
 }

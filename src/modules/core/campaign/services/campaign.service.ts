@@ -87,6 +87,10 @@ export class CampaignService {
 		return this.campaignRepository.progress(tenantId, id);
 	}
 
+	async getProgressMany(tenantId: string, campaignIds: string[]) {
+		return this.campaignRepository.progressMany(tenantId, campaignIds);
+	}
+
 	// Cascade preview for the restore confirmation modal. Uses the
 	// including-deleted lookup so an admin opening the modal on an archived
 	// campaign doesn't get a 404.

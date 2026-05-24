@@ -7,6 +7,7 @@ import {
 } from "@infrastructure/prisma-client/soft-delete";
 import { Injectable } from "@nestjs/common";
 import { Pledge, Prisma } from "@prisma/client";
+import dayjs from "@shared/dayjs";
 
 import {
 	CreatePledgeInput,
@@ -14,15 +15,77 @@ import {
 	UpdatePledgeInput,
 } from "../pledge.types";
 
+export type PledgeLifecycle =
+	| "fulfilled"
+	| "on-track"
+	| "due-soon"
+	| "past-due"
+	| "no-deadline"
+	| "cancelled";
+
+// Compact relation shapes attached to every pledge row. Surfaces archived
+// references (member/campaign/campaignItem) so the FE can render a
+// tombstone label rather than dropping the FK silently.
+export type PledgeRelations = {
+	member: {
+		id: string;
+		firstName: string;
+		lastName: string;
+		deletedAt: Date | null;
+	};
+	campaign: {
+		id: string;
+		title: string;
+		deadline: Date | null;
+		deletedAt: Date | null;
+	};
+	campaignItem: {
+		id: string;
+		title: string;
+		deadline: Date | null;
+	} | null;
+	resolvedDeadline: string | null;
+	daysUntil: number | null;
+	lifecycle: PledgeLifecycle;
+};
+
 export type PledgeWithAmounts = Pledge & {
 	paidAmount: number;
 	remainingAmount: number;
 };
 
+export type PledgeWithRelations = PledgeWithAmounts & PledgeRelations;
+
 export interface PledgeListResult {
-	items: PledgeWithAmounts[];
+	items: PledgeWithRelations[];
 	total: number;
 	sum: number;
+}
+
+export interface PledgeStatusBucket {
+	status: "ACTIVE" | "FULFILLED" | "CANCELLED";
+	count: number;
+	pledged: number;
+	paid: number;
+}
+
+export interface PledgeLifecycleBucket {
+	lifecycle: PledgeLifecycle;
+	count: number;
+	outstanding: number;
+	share: number;
+}
+
+// Cohort-style pledge report driven by `pledge.createdAt`. Answers
+// "of pledges started in this window, what is their fulfilment state?".
+export interface PledgesReportResult {
+	totalPledged: number;
+	totalPaid: number;
+	totalRemaining: number;
+	fulfillmentPct: number;
+	totalCount: number;
+	statusBreakdown: PledgeStatusBucket[];
+	aging: PledgeLifecycleBucket[];
 }
 
 // Derive the surfaced status from stored status + payment totals.
@@ -41,6 +104,67 @@ const deriveStatus = (
 	return storedStatus;
 };
 
+// Lifecycle bucket. cancelled > fulfilled > deadline-based.
+// Mirrors the FE's `pledgeLifecycle` so dashboards and reports agree.
+const deriveLifecycle = (
+	status: Pledge["status"],
+	pledgedAmount: number,
+	paidAmount: number,
+	resolvedDeadline: Date | null,
+): PledgeLifecycle => {
+	if (status === "CANCELLED") {
+		return "cancelled";
+	}
+	if (status === "FULFILLED" || paidAmount >= pledgedAmount) {
+		return "fulfilled";
+	}
+	if (!resolvedDeadline) {
+		return "no-deadline";
+	}
+	const days = dayjs(resolvedDeadline)
+		.startOf("day")
+		.diff(dayjs().startOf("day"), "day");
+	if (days < 0) {
+		return "past-due";
+	}
+	if (days <= 14) {
+		return "due-soon";
+	}
+	return "on-track";
+};
+
+// Prisma `include` shape for pledge read paths. campaignItem is optional
+// so we opt out of soft-delete auto-filter to surface archived items
+// with a tombstone marker. Member and campaign are required relations —
+// the extension can't filter them, so tombstones surface naturally and
+// the caller must inspect `deletedAt`.
+const PLEDGE_RELATION_INCLUDE = {
+	member: {
+		select: {
+			id: true,
+			firstName: true,
+			lastName: true,
+			deletedAt: true,
+		},
+	},
+	campaign: {
+		select: {
+			id: true,
+			title: true,
+			deadline: true,
+			deletedAt: true,
+		},
+	},
+	campaignItem: {
+		where: { deletedAt: undefined },
+		select: {
+			id: true,
+			title: true,
+			deadline: true,
+		},
+	},
+} as const;
+
 @Injectable()
 export class PledgeRepository {
 	constructor(private readonly prisma: PrismaClientService) {}
@@ -52,14 +176,14 @@ export class PledgeRepository {
 	async findById(
 		tenantId: string,
 		id: string,
-	): Promise<PledgeWithAmounts | null> {
+	): Promise<PledgeWithRelations | null> {
 		return this.findByIdInner(tenantId, id, false);
 	}
 
 	async findByIdIncludingDeleted(
 		tenantId: string,
 		id: string,
-	): Promise<PledgeWithAmounts | null> {
+	): Promise<PledgeWithRelations | null> {
 		return this.findByIdInner(tenantId, id, true);
 	}
 
@@ -67,8 +191,11 @@ export class PledgeRepository {
 		tenantId: string,
 		id: string,
 		includeDeleted: boolean,
-	): Promise<PledgeWithAmounts | null> {
-		const findArgs = { where: { id, tenantId } };
+	): Promise<PledgeWithRelations | null> {
+		const findArgs = {
+			where: { id, tenantId },
+			include: PLEDGE_RELATION_INCLUDE,
+		};
 		const [pledge, aggregate] = await Promise.all([
 			includeDeleted
 				? this.prisma.pledge.findFirst(withDeleted("Pledge", findArgs))
@@ -82,13 +209,7 @@ export class PledgeRepository {
 			return null;
 		}
 		const paidAmount = Number(aggregate._sum.amount ?? 0);
-		const pledgedAmount = Number(pledge.pledgedAmount);
-		return {
-			...pledge,
-			status: deriveStatus(pledge.status, paidAmount, pledgedAmount),
-			paidAmount,
-			remainingAmount: Math.max(0, pledgedAmount - paidAmount),
-		};
+		return this.toWithRelations(pledge, paidAmount);
 	}
 
 	async findAll(
@@ -158,6 +279,7 @@ export class PledgeRepository {
 			this.prisma.pledge.findMany(
 				wrap({
 					where,
+					include: PLEDGE_RELATION_INCLUDE,
 					orderBy: { createdAt: "desc" as const },
 					skip: filters.offset,
 					take: filters.limit,
@@ -185,21 +307,73 @@ export class PledgeRepository {
 				.map((g) => [g.pledgeId as string, Number(g._sum.amount ?? 0)]),
 		);
 
-		const itemsWithAmounts: PledgeWithAmounts[] = items.map((p) => {
-			const paidAmount = paidByPledgeId[p.id] ?? 0;
-			const pledgedAmount = Number(p.pledgedAmount);
-			return {
-				...p,
-				status: deriveStatus(p.status, paidAmount, pledgedAmount),
-				paidAmount,
-				remainingAmount: Math.max(0, pledgedAmount - paidAmount),
-			};
-		});
+		const itemsWithRelations: PledgeWithRelations[] = items.map((p) =>
+			this.toWithRelations(p, paidByPledgeId[p.id] ?? 0),
+		);
 
 		return {
-			items: itemsWithAmounts,
+			items: itemsWithRelations,
 			total,
 			sum: Number(aggregate._sum.pledgedAmount ?? 0),
+		};
+	}
+
+	// Maps a Prisma pledge (with its included relations) plus the
+	// transaction-sum to the `PledgeWithRelations` shape we promise
+	// downstream. Computes derived fields: status (auto-fulfilled when
+	// payments cover pledged), resolvedDeadline (item > campaign), days
+	// until that deadline, and lifecycle bucket.
+	private toWithRelations(
+		pledge: Pledge & {
+			member: {
+				id: string;
+				firstName: string;
+				lastName: string;
+				deletedAt: Date | null;
+			};
+			campaign: {
+				id: string;
+				title: string;
+				deadline: Date | null;
+				deletedAt: Date | null;
+			};
+			campaignItem: {
+				id: string;
+				title: string;
+				deadline: Date | null;
+			} | null;
+		},
+		paidAmount: number,
+	): PledgeWithRelations {
+		const pledgedAmount = Number(pledge.pledgedAmount);
+		const status = deriveStatus(pledge.status, paidAmount, pledgedAmount);
+		const resolvedDeadlineDate =
+			pledge.campaignItem?.deadline ?? pledge.campaign.deadline;
+		const resolvedDeadline = resolvedDeadlineDate
+			? dayjs(resolvedDeadlineDate).toISOString()
+			: null;
+		const daysUntil = resolvedDeadlineDate
+			? dayjs(resolvedDeadlineDate)
+					.startOf("day")
+					.diff(dayjs().startOf("day"), "day")
+			: null;
+		const lifecycle = deriveLifecycle(
+			status,
+			pledgedAmount,
+			paidAmount,
+			resolvedDeadlineDate,
+		);
+		return {
+			...pledge,
+			status,
+			paidAmount,
+			remainingAmount: Math.max(0, pledgedAmount - paidAmount),
+			member: pledge.member,
+			campaign: pledge.campaign,
+			campaignItem: pledge.campaignItem ?? null,
+			resolvedDeadline,
+			daysUntil,
+			lifecycle,
 		};
 	}
 
@@ -236,6 +410,184 @@ export class PledgeRepository {
 		return candidates
 			.filter((c) => (paidById[c.id] ?? 0) >= Number(c.pledgedAmount))
 			.map((c) => c.id);
+	}
+
+	// Cohort-style pledge report for the admin Reports → Pledge Dynamics
+	// tab. Filters on `pledge.createdAt` so the date range answers the
+	// question "of pledges started in this window, how are they doing?".
+	// Computes derived status + lifecycle server-side so every metric on
+	// the page agrees.
+	async pledgesReport(
+		tenantId: string,
+		dateFrom: Date | undefined,
+		dateTo: Date | undefined,
+	): Promise<PledgesReportResult> {
+		const createdAt =
+			dateFrom || dateTo
+				? {
+						...(dateFrom ? { gte: dateFrom } : {}),
+						...(dateTo ? { lte: dateTo } : {}),
+					}
+				: undefined;
+		const where: Prisma.PledgeWhereInput = {
+			tenantId,
+			...(createdAt ? { createdAt } : {}),
+		};
+
+		const pledges = await this.prisma.pledge.findMany({
+			where,
+			include: PLEDGE_RELATION_INCLUDE,
+		});
+		const pledgeIds = pledges.map((p) => p.id);
+		const paidGroups =
+			pledgeIds.length > 0
+				? await this.prisma.transaction.groupBy({
+						by: ["pledgeId"],
+						where: { pledgeId: { in: pledgeIds } },
+						_sum: { amount: true },
+					})
+				: [];
+		const paidByPledgeId = Object.fromEntries(
+			paidGroups
+				.filter((g) => g.pledgeId !== null)
+				.map((g) => [g.pledgeId as string, Number(g._sum.amount ?? 0)]),
+		);
+		const enriched = pledges.map((p) =>
+			this.toWithRelations(p, paidByPledgeId[p.id] ?? 0),
+		);
+
+		// Top-level totals across the cohort.
+		let totalPledged = 0;
+		let totalPaid = 0;
+		let totalRemaining = 0;
+		const statusMap = new Map<string, PledgeStatusBucket>([
+			["ACTIVE", { status: "ACTIVE", count: 0, pledged: 0, paid: 0 }],
+			["FULFILLED", { status: "FULFILLED", count: 0, pledged: 0, paid: 0 }],
+			["CANCELLED", { status: "CANCELLED", count: 0, pledged: 0, paid: 0 }],
+		]);
+		const lifecycleMap = new Map<
+			PledgeLifecycle,
+			{ count: number; outstanding: number }
+		>();
+		for (const p of enriched) {
+			const pledged = Number(p.pledgedAmount);
+			totalPledged += pledged;
+			totalPaid += p.paidAmount;
+			totalRemaining += p.remainingAmount;
+			const bucket = statusMap.get(p.status);
+			if (bucket) {
+				bucket.count += 1;
+				bucket.pledged += pledged;
+				bucket.paid += p.paidAmount;
+			}
+			// Aging only meaningful for not-yet-fulfilled, not-cancelled rows.
+			if (p.lifecycle !== "fulfilled" && p.lifecycle !== "cancelled") {
+				const agg = lifecycleMap.get(p.lifecycle) ?? {
+					count: 0,
+					outstanding: 0,
+				};
+				agg.count += 1;
+				agg.outstanding += p.remainingAmount;
+				lifecycleMap.set(p.lifecycle, agg);
+			}
+		}
+
+		const totalOutstandingActive = Array.from(lifecycleMap.values()).reduce(
+			(s, b) => s + b.outstanding,
+			0,
+		);
+		const aging: PledgeLifecycleBucket[] = Array.from(lifecycleMap.entries())
+			.map(([lifecycle, agg]) => ({
+				lifecycle,
+				count: agg.count,
+				outstanding: agg.outstanding,
+				share:
+					totalOutstandingActive > 0
+						? agg.outstanding / totalOutstandingActive
+						: 0,
+			}))
+			.sort((a, b) => b.outstanding - a.outstanding);
+
+		return {
+			totalPledged,
+			totalPaid,
+			totalRemaining,
+			fulfillmentPct: totalPledged > 0 ? totalPaid / totalPledged : 0,
+			totalCount: enriched.length,
+			statusBreakdown: Array.from(statusMap.values()),
+			aging,
+		};
+	}
+
+	// Returns the most urgent active pledges for the dashboard's
+	// outstanding-pledges card. "Urgent" = past-due, due-soon (≤14 days),
+	// or on-track with deadline within 30 days. Auto-fulfilled rows
+	// (paid ≥ pledged) are excluded — they aren't outstanding anymore.
+	// no-deadline pledges are excluded; they aren't time-sensitive.
+	//
+	// The sort key matches the FE's previous ordering: past-due first
+	// (closest to the brink), then due-soon, then on-track-soon by days
+	// asc, with remaining amount descending as the tie-breaker.
+	async findUrgent(
+		tenantId: string,
+		limit: number,
+	): Promise<PledgeWithRelations[]> {
+		const candidates = await this.prisma.pledge.findMany({
+			where: { tenantId, status: "ACTIVE" },
+			include: PLEDGE_RELATION_INCLUDE,
+		});
+
+		const pledgeIds = candidates.map((p) => p.id);
+		const paidGroups =
+			pledgeIds.length > 0
+				? await this.prisma.transaction.groupBy({
+						by: ["pledgeId"],
+						where: { pledgeId: { in: pledgeIds } },
+						_sum: { amount: true },
+					})
+				: [];
+		const paidByPledgeId = Object.fromEntries(
+			paidGroups
+				.filter((g) => g.pledgeId !== null)
+				.map((g) => [g.pledgeId as string, Number(g._sum.amount ?? 0)]),
+		);
+
+		const enriched = candidates.map((p) =>
+			this.toWithRelations(p, paidByPledgeId[p.id] ?? 0),
+		);
+
+		const URGENCY_RANK: Record<PledgeLifecycle, number> = {
+			"past-due": 0,
+			"due-soon": 1,
+			"on-track": 2,
+			fulfilled: 3,
+			"no-deadline": 4,
+			cancelled: 5,
+		};
+
+		return enriched
+			.filter((p) => {
+				if (p.lifecycle === "past-due" || p.lifecycle === "due-soon") {
+					return true;
+				}
+				if (p.lifecycle === "on-track") {
+					return (p.daysUntil ?? Number.POSITIVE_INFINITY) <= 30;
+				}
+				return false;
+			})
+			.sort((a, b) => {
+				const rank = URGENCY_RANK[a.lifecycle] - URGENCY_RANK[b.lifecycle];
+				if (rank !== 0) {
+					return rank;
+				}
+				const aDays = a.daysUntil ?? Number.POSITIVE_INFINITY;
+				const bDays = b.daysUntil ?? Number.POSITIVE_INFINITY;
+				if (aDays !== bDays) {
+					return aDays - bDays;
+				}
+				return b.remainingAmount - a.remainingAmount;
+			})
+			.slice(0, limit);
 	}
 
 	async update(

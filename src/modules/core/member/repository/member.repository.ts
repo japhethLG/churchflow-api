@@ -69,9 +69,17 @@ export class MemberRepository {
 		tenantId: string,
 		filters: MemberFilters,
 	): Promise<MemberListResult> {
+		const createdAt =
+			filters.dateFrom || filters.dateTo
+				? {
+						...(filters.dateFrom ? { gte: filters.dateFrom } : {}),
+						...(filters.dateTo ? { lte: filters.dateTo } : {}),
+					}
+				: undefined;
 		const baseWhere: Prisma.MemberWhereInput = {
 			tenantId,
 			...(filters.status ? { status: filters.status } : {}),
+			...(createdAt ? { createdAt } : {}),
 			...(filters.search
 				? {
 						OR: [

@@ -1,4 +1,5 @@
 export { CampaignFiltersRequestDto } from "./campaign-filters.request";
+export { CampaignProgressBatchRequestDto } from "./campaign-progress-batch.request";
 export { CreateCampaignRequestDto } from "./create-campaign.request";
 export { CreateCampaignItemRequestDto } from "./create-campaign-item.request";
 export { UpdateCampaignRequestDto } from "./update-campaign.request";

@@ -6,6 +6,8 @@ import { UserClaimsService } from "@infrastructure/firebase-auth/user-claims.ser
 import { AuditService } from "@modules/core/audit/services/audit.service";
 import { MemberListResult } from "@modules/core/member/repository/member.repository";
 import { MemberService } from "@modules/core/member/services/member.service";
+import { PledgeService } from "@modules/core/pledge/services/pledge.service";
+import { TransactionService } from "@modules/core/transaction/services/transaction.service";
 import { UserService } from "@modules/core/user/services/user.service";
 import {
 	MemberMergingService,
@@ -54,6 +56,23 @@ export interface UpdateMyProfileServiceInput {
 // Unified member feature service. Authorization (role gating, ownership)
 // is the controller's responsibility — see member.tenant.controller and
 // member.self.controller. The service focuses on persistence + audit.
+// Aggregate snapshot for the admin Member Detail page. Combines
+// transaction totals + pledge totals into one response so the FE does
+// not have to re-implement aggregation against paginated lists.
+export interface MemberSummaryResult {
+	lifetimeGiving: number;
+	transactionCount: number;
+	avgGift: number;
+	firstGiftDate: string | null;
+	lastGiftDate: string | null;
+	activePledgesCount: number;
+	fulfilledPledgesCount: number;
+	cancelledPledgesCount: number;
+	pledgedTotal: number;
+	paidTotal: number;
+	pledgeFulfillmentPct: number;
+}
+
 @Injectable()
 export class MemberFeatureService {
 	constructor(
@@ -62,7 +81,69 @@ export class MemberFeatureService {
 		private readonly userClaims: UserClaimsService,
 		private readonly auditService: AuditService,
 		private readonly memberMerging: MemberMergingService,
+		private readonly transactionService: TransactionService,
+		private readonly pledgeService: PledgeService,
 	) {}
+
+	// Pulls lifetime giving + active/fulfilled/cancelled pledge stats for
+	// one member in two parallel queries. Replaces the FE's previous
+	// fetch-500-and-reduce pattern, which silently undercounted any
+	// member with >500 lifetime transactions or >200 pledges.
+	async summary(
+		tenant: TenantContext,
+		memberId: string,
+	): Promise<MemberSummaryResult> {
+		// Confirm the member exists in this tenant (throws 404 otherwise).
+		await this.memberService.getById(tenant.tenantId, memberId);
+
+		const RANGE_FLOOR = new Date(Date.UTC(1970, 0, 1));
+		const RANGE_CEILING = new Date(Date.UTC(2999, 11, 31, 23, 59, 59, 999));
+
+		const [txSummary, memberPledges] = await Promise.all([
+			this.transactionService.summary(
+				tenant.tenantId,
+				RANGE_FLOOR,
+				RANGE_CEILING,
+				{ memberId },
+			),
+			// All of this member's pledges. N is small per member.
+			this.pledgeService.getAll(tenant.tenantId, {
+				memberId,
+				limit: 10000,
+			}),
+		]);
+
+		let activePledgesCount = 0;
+		let fulfilledPledgesCount = 0;
+		let cancelledPledgesCount = 0;
+		let pledgedTotal = 0;
+		let paidTotal = 0;
+		for (const p of memberPledges.items) {
+			pledgedTotal += Number(p.pledgedAmount);
+			paidTotal += p.paidAmount;
+			if (p.status === "ACTIVE") {
+				activePledgesCount += 1;
+			} else if (p.status === "FULFILLED") {
+				fulfilledPledgesCount += 1;
+			} else if (p.status === "CANCELLED") {
+				cancelledPledgesCount += 1;
+			}
+		}
+
+		return {
+			lifetimeGiving: txSummary.total,
+			transactionCount: txSummary.count,
+			avgGift: txSummary.avg,
+			firstGiftDate: txSummary.firstDate,
+			lastGiftDate: txSummary.lastDate,
+			activePledgesCount,
+			fulfilledPledgesCount,
+			cancelledPledgesCount,
+			pledgedTotal,
+			paidTotal,
+			pledgeFulfillmentPct: pledgedTotal > 0 ? paidTotal / pledgedTotal : 0,
+		};
+	}
 
 	async previewMerge(
 		tenant: TenantContext,
@@ -125,6 +206,8 @@ export class MemberFeatureService {
 		filters: {
 			status?: MemberStatus;
 			search?: string;
+			dateFrom?: Date;
+			dateTo?: Date;
 			offset?: number;
 			limit?: number;
 			includeDeleted?: boolean;

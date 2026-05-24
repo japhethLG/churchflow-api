@@ -36,6 +36,7 @@ import { DeleteResponseDto } from "@shared/dto/delete-response.dto";
 import { CampaignFeatureService } from "../../services/campaign-feature.service";
 import {
 	CampaignFiltersRequestDto,
+	CampaignProgressBatchRequestDto,
 	CreateCampaignItemRequestDto,
 	CreateCampaignRequestDto,
 	UpdateCampaignItemRequestDto,
@@ -44,6 +45,7 @@ import {
 import {
 	CampaignItemResponseDto,
 	CampaignListResponseDto,
+	CampaignProgressBatchResponseDto,
 	CampaignProgressResponseDto,
 	CampaignResponseDto,
 	CampaignWithItemsResponseDto,
@@ -102,6 +104,29 @@ export class CampaignTenantController {
 				total: result.total,
 			},
 		};
+	}
+
+	// Batch progress lookup. Static "progress/batch" path — declared
+	// above the ":id" routes so Nest's matcher does not try to treat
+	// "progress" as a campaign id.
+	@Post("progress/batch")
+	@ApiOperation({
+		summary: "Batch campaign progress (pledged + raised totals)",
+		description:
+			"Returns one entry per requested campaign id. Replaces the FE's previous fan-out of N individual /progress calls when rendering many progress bars (dashboard deadline-watch / outstanding-pledges cards).",
+	})
+	@ApiOkResponse({ type: CampaignProgressBatchResponseDto })
+	async progressBatch(
+		@CurrentTenant() tenant: TenantContext,
+		@CurrentAbility() ability: AppAbility,
+		@Body() body: CampaignProgressBatchRequestDto,
+	): Promise<CampaignProgressBatchResponseDto> {
+		assertCan(ability, "read", "Campaign");
+		const items = await this.campaignFeatureService.progressMany(
+			tenant,
+			body.campaignIds,
+		);
+		return { items };
 	}
 
 	@Get(":id")

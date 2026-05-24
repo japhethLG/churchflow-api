@@ -9,8 +9,11 @@ import { CampaignItemService } from "@modules/core/campaign-item/services/campai
 import { MemberService } from "@modules/core/member/services/member.service";
 import { PledgeService } from "@modules/core/pledge/services/pledge.service";
 import {
+	GiversReportResult,
 	TransactionListResult,
+	TransactionSummaryOptions,
 	TransactionSummaryResult,
+	UnattributedSummaryResult,
 } from "@modules/core/transaction/repository/transaction.repository";
 import { TransactionService } from "@modules/core/transaction/services/transaction.service";
 import {
@@ -247,10 +250,9 @@ export class TransactionFeatureService {
 			dateFrom?: Date;
 			dateTo?: Date;
 			months?: number;
-			memberId?: string;
-		} = {},
+		} & TransactionSummaryOptions = {},
 	): Promise<TransactionSummaryResult> {
-		const { dateFrom, dateTo, months, memberId } = options;
+		const { dateFrom, dateTo, months, ...rest } = options;
 		const now = dayjs.utc();
 		const resolvedTo =
 			dateTo ?? (dateFrom ? now.endOf("month").toDate() : null);
@@ -262,7 +264,7 @@ export class TransactionFeatureService {
 				tenant.tenantId,
 				resolvedFrom,
 				resolvedTo,
-				{ memberId },
+				rest,
 			);
 		}
 
@@ -276,7 +278,38 @@ export class TransactionFeatureService {
 			tenant.tenantId,
 			fallbackFrom,
 			fallbackTo,
-			{ memberId },
+			rest,
+		);
+	}
+
+	// Counts and totals of unattributed gifts for the admin dashboard's
+	// callout. Both bounds default to the controller (last 7 days).
+	async unattributedSummary(
+		tenant: TenantContext,
+		dateFrom: Date,
+		dateTo: Date,
+	): Promise<UnattributedSummaryResult> {
+		return this.transactionService.unattributedSummary(
+			tenant.tenantId,
+			dateFrom,
+			dateTo,
+		);
+	}
+
+	// Top-N givers report for the admin Reports page (Givers tab).
+	// `dateFrom`/`dateTo` are mandatory at this layer — the controller
+	// applies a sensible default (last 12 months) when callers omit them.
+	async giversReport(
+		tenant: TenantContext,
+		dateFrom: Date,
+		dateTo: Date,
+		limit: number,
+	): Promise<GiversReportResult> {
+		return this.transactionService.giversReport(
+			tenant.tenantId,
+			dateFrom,
+			dateTo,
+			limit,
 		);
 	}
 

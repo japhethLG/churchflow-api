@@ -37,9 +37,15 @@ import { PledgeFeatureService } from "../../services/pledge-feature.service";
 import {
 	CreatePledgeRequestDto,
 	PledgeFiltersRequestDto,
+	PledgesReportQueryRequestDto,
 	UpdatePledgeRequestDto,
+	UrgentPledgesQueryRequestDto,
 } from "./requests";
-import { PledgeListResponseDto, PledgeResponseDto } from "./responses";
+import {
+	PledgeListResponseDto,
+	PledgeResponseDto,
+	PledgesReportResponseDto,
+} from "./responses";
 
 // Tenant-management intent for pledges. Available to admins (and
 // super-admins, who pass through TenantGuard). Members use the
@@ -105,6 +111,58 @@ export class PledgeTenantController {
 				sum: result.sum,
 			},
 		};
+	}
+
+	// Static "urgent" segment must be declared before the ":id" routes below
+	// or Nest's matcher would treat "urgent" as an id.
+	@Get("urgent")
+	@ApiOperation({
+		summary:
+			"List the most urgent active pledges (admin dashboard outstanding card)",
+		description:
+			"Returns active pledges that are past-due, due-soon (≤14d), or on-track within 30 days of their resolved deadline, sorted by urgency. Auto-fulfilled and no-deadline pledges are excluded.",
+	})
+	@ApiOkResponse({ type: PledgeListResponseDto })
+	async urgent(
+		@CurrentTenant() tenant: TenantContext,
+		@CurrentAbility() ability: AppAbility,
+		@Query() query: UrgentPledgesQueryRequestDto,
+	): Promise<PledgeListResponseDto> {
+		assertCan(ability, "read", "Pledge");
+		const limit = query.limit ?? 50;
+		const items = await this.pledgeFeatureService.urgent(tenant, limit);
+		const sum = items.reduce((acc, p) => acc + Number(p.pledgedAmount), 0);
+		return {
+			items: items as unknown as PledgeResponseDto[],
+			meta: {
+				offset: 0,
+				limit,
+				total: items.length,
+				sum,
+			},
+		};
+	}
+
+	// Cohort-style pledge report. Static "reports/dynamics" segment must
+	// be declared before the ":id" routes below or Nest's matcher would
+	// treat "reports" as an id.
+	@Get("reports/dynamics")
+	@ApiOperation({
+		summary: "Pledge dynamics report (admin Reports → Pledge Dynamics tab)",
+		description:
+			"Cohort-style: of pledges whose `createdAt` falls in the date range, returns totals, fulfillment %, status breakdown, and aging buckets.",
+	})
+	@ApiOkResponse({ type: PledgesReportResponseDto })
+	async dynamicsReport(
+		@CurrentTenant() tenant: TenantContext,
+		@CurrentAbility() ability: AppAbility,
+		@Query() query: PledgesReportQueryRequestDto,
+	): Promise<PledgesReportResponseDto> {
+		assertCan(ability, "read", "Pledge");
+		return this.pledgeFeatureService.report(tenant, {
+			dateFrom: query.dateFrom,
+			dateTo: query.dateTo,
+		}) as unknown as Promise<PledgesReportResponseDto>;
 	}
 
 	@Get(":id")

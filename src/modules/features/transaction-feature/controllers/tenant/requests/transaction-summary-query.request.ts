@@ -1,17 +1,22 @@
-import { ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiPropertyOptional, IntersectionType } from "@nestjs/swagger";
+import { TransactionType } from "@prisma/client";
 import { DateRangeRequestDto } from "@shared/dto/date-range.request.dto";
+import { StateFilterRequestDto } from "@shared/dto/state-filter.request.dto";
 import { ID_EXAMPLE } from "@shared/dto-examples";
 import { Type } from "class-transformer";
-import { IsInt, IsOptional, IsString, Max, Min } from "class-validator";
+import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
 
-// Query DTO for the admin transaction summary endpoint. If `dateFrom`
-// / `dateTo` are supplied (either or both), the feature service uses
-// them verbatim — month-trend buckets are derived from the inclusive
-// range. `months` is the legacy fallback: when neither bound is
-// present, the feature service produces a rolling window of N months
-// ending today. Both inputs together are accepted but the explicit
-// range wins.
-export class TransactionSummaryQueryRequestDto extends DateRangeRequestDto {
+// Query DTO for the admin transaction summary endpoint. `dateFrom` /
+// `dateTo` bracket `Transaction.date`. When both bounds are absent the
+// feature service falls back to a rolling `months` window ending today.
+//
+// The card respects the same filter set as the list endpoint
+// (`type`, `campaignId`, `memberId`, `includeDeleted`/`onlyDeleted`) so
+// the KPI numbers cannot diverge from the rows the admin sees below.
+export class TransactionSummaryQueryRequestDto extends IntersectionType(
+	DateRangeRequestDto,
+	StateFilterRequestDto,
+) {
 	@ApiPropertyOptional({
 		example: 12,
 		minimum: 1,
@@ -34,4 +39,20 @@ export class TransactionSummaryQueryRequestDto extends DateRangeRequestDto {
 	@IsOptional()
 	@IsString()
 	memberId?: string;
+
+	@ApiPropertyOptional({
+		example: ID_EXAMPLE,
+		description: "Narrow the summary to a single campaign.",
+	})
+	@IsOptional()
+	@IsString()
+	campaignId?: string;
+
+	@ApiPropertyOptional({
+		enum: TransactionType,
+		description: "Narrow the summary to a single transaction type.",
+	})
+	@IsOptional()
+	@IsEnum(TransactionType)
+	type?: TransactionType;
 }

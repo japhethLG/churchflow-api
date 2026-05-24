@@ -125,6 +125,89 @@ export class CampaignRepository {
 		return previewRestoreCascade(this.prisma, "Campaign", id);
 	}
 
+	// Progress for many campaigns in one batch. Same four aggregations as
+	// `progress`, but grouped by campaignId so the FE can render N
+	// progress bars from a single roundtrip instead of fanning out N
+	// independent /progress calls.
+	async progressMany(tenantId: string, campaignIds: string[]) {
+		if (campaignIds.length === 0) {
+			return new Map<
+				string,
+				{
+					goalAmount: number;
+					pledgedAmount: number;
+					pledgeCount: number;
+					raisedAmount: number;
+				}
+			>();
+		}
+		const where = { tenantId, campaignId: { in: campaignIds } };
+		const [pledgeAgg, txAgg, itemAgg] = await Promise.all([
+			this.prisma.pledge.groupBy({
+				by: ["campaignId"],
+				where,
+				_sum: { pledgedAmount: true },
+				_count: { _all: true },
+			}),
+			this.prisma.transaction.groupBy({
+				by: ["campaignId"],
+				where,
+				_sum: { amount: true },
+			}),
+			// Goal = sum of item targetAmounts per campaign. Soft-deleted
+			// items are auto-filtered by the extension.
+			this.prisma.campaignItem.groupBy({
+				by: ["campaignId"],
+				where: { tenantId, campaignId: { in: campaignIds } },
+				_sum: { targetAmount: true },
+			}),
+		]);
+
+		const result = new Map<
+			string,
+			{
+				goalAmount: number;
+				pledgedAmount: number;
+				pledgeCount: number;
+				raisedAmount: number;
+			}
+		>();
+		for (const id of campaignIds) {
+			result.set(id, {
+				goalAmount: 0,
+				pledgedAmount: 0,
+				pledgeCount: 0,
+				raisedAmount: 0,
+			});
+		}
+		for (const row of pledgeAgg) {
+			if (!row.campaignId) {
+				continue;
+			}
+			const bucket = result.get(row.campaignId);
+			if (bucket) {
+				bucket.pledgedAmount = Number(row._sum.pledgedAmount ?? 0);
+				bucket.pledgeCount = row._count._all;
+			}
+		}
+		for (const row of txAgg) {
+			if (!row.campaignId) {
+				continue;
+			}
+			const bucket = result.get(row.campaignId);
+			if (bucket) {
+				bucket.raisedAmount = Number(row._sum.amount ?? 0);
+			}
+		}
+		for (const row of itemAgg) {
+			const bucket = result.get(row.campaignId);
+			if (bucket) {
+				bucket.goalAmount = Number(row._sum.targetAmount ?? 0);
+			}
+		}
+		return result;
+	}
+
 	// Per-campaign progress: pledge totals + transaction totals, both overall
 	// and broken down by item. One SQL round-trip per aggregate.
 	async progress(tenantId: string, campaignId: string) {

@@ -27,6 +27,9 @@ export interface UpdateMemberInput {
 export interface MemberFilters {
 	status?: MemberStatus;
 	search?: string;
+	// dateFrom/dateTo bracket `Member.createdAt`.
+	dateFrom?: Date;
+	dateTo?: Date;
 	offset?: number;
 	limit?: number;
 	// 3-state archive filter — see CampaignFilters for semantics.

@@ -43,6 +43,7 @@ import {
 import {
 	MemberListResponseDto,
 	MemberResponseDto,
+	MemberSummaryResponseDto,
 	MergeMembersPreviewResponseDto,
 	MergeMembersResponseDto,
 } from "./responses";
@@ -172,6 +173,26 @@ export class MemberTenantController {
 			tenant,
 			id,
 		) as unknown as Promise<MemberResponseDto>;
+	}
+
+	@Get(":id/summary")
+	@ApiOperation({
+		summary: "Aggregate giving + pledge stats for the Member Detail page",
+		description:
+			"Lifetime giving totals, first/last gift dates, and pledge breakdown by status. Replaces the FE's previous pattern of fetching 500 transactions and re-aggregating in JS (which silently undercounted).",
+	})
+	@ApiOkResponse({ type: MemberSummaryResponseDto })
+	async summary(
+		@CurrentTenant() tenant: TenantContext,
+		@CurrentAbility() ability: AppAbility,
+		@Param("id") id: string,
+	): Promise<MemberSummaryResponseDto> {
+		const member = await this.memberFeatureService.getById(tenant, id);
+		assertCan(ability, "read", asSubject("Member", member));
+		return this.memberFeatureService.summary(
+			tenant,
+			id,
+		) as unknown as Promise<MemberSummaryResponseDto>;
 	}
 
 	@Get(":id/merge-preview")

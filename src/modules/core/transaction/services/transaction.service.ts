@@ -3,10 +3,14 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { Transaction } from "@prisma/client";
 import {
 	BulkCreateItem,
+	GiversReportResult,
 	TransactionAggregate,
 	TransactionListResult,
 	TransactionRepository,
+	TransactionSummaryOptions,
 	TransactionSummaryResult,
+	TransactionWithRelations,
+	UnattributedSummaryResult,
 } from "../repository/transaction.repository";
 import {
 	CreateTransactionInput,
@@ -39,7 +43,10 @@ export class TransactionService {
 		return this.transactionRepository.aggregateForTenant(tenantId, filters);
 	}
 
-	async getById(tenantId: string, id: string): Promise<Transaction> {
+	async getById(
+		tenantId: string,
+		id: string,
+	): Promise<TransactionWithRelations> {
 		const tx = await this.transactionRepository.findById(tenantId, id);
 		if (!tx) {
 			throw new NotFoundException(`Transaction not found: ${id}`);
@@ -50,7 +57,7 @@ export class TransactionService {
 	async getByIdIncludingDeleted(
 		tenantId: string,
 		id: string,
-	): Promise<Transaction> {
+	): Promise<TransactionWithRelations> {
 		const tx = await this.transactionRepository.findByIdIncludingDeleted(
 			tenantId,
 			id,
@@ -72,13 +79,39 @@ export class TransactionService {
 		tenantId: string,
 		dateFrom: Date,
 		dateTo: Date,
-		options: { memberId?: string } = {},
+		options: TransactionSummaryOptions = {},
 	): Promise<TransactionSummaryResult> {
 		return this.transactionRepository.summary(
 			tenantId,
 			dateFrom,
 			dateTo,
 			options,
+		);
+	}
+
+	async unattributedSummary(
+		tenantId: string,
+		dateFrom: Date,
+		dateTo: Date,
+	): Promise<UnattributedSummaryResult> {
+		return this.transactionRepository.unattributedSummary(
+			tenantId,
+			dateFrom,
+			dateTo,
+		);
+	}
+
+	async giversReport(
+		tenantId: string,
+		dateFrom: Date,
+		dateTo: Date,
+		limit: number,
+	): Promise<GiversReportResult> {
+		return this.transactionRepository.giversReport(
+			tenantId,
+			dateFrom,
+			dateTo,
+			limit,
 		);
 	}
 

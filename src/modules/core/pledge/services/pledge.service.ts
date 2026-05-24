@@ -10,7 +10,8 @@ import {
 import {
 	PledgeListResult,
 	PledgeRepository,
-	PledgeWithAmounts,
+	PledgesReportResult,
+	PledgeWithRelations,
 } from "../repository/pledge.repository";
 
 @Injectable()
@@ -21,7 +22,7 @@ export class PledgeService {
 		return this.pledgeRepository.create(data);
 	}
 
-	async getById(tenantId: string, id: string): Promise<PledgeWithAmounts> {
+	async getById(tenantId: string, id: string): Promise<PledgeWithRelations> {
 		const pledge = await this.pledgeRepository.findById(tenantId, id);
 		if (!pledge) {
 			throw new NotFoundException(`Pledge not found: ${id}`);
@@ -32,7 +33,7 @@ export class PledgeService {
 	async getByIdIncludingDeleted(
 		tenantId: string,
 		id: string,
-	): Promise<PledgeWithAmounts> {
+	): Promise<PledgeWithRelations> {
 		const pledge = await this.pledgeRepository.findByIdIncludingDeleted(
 			tenantId,
 			id,
@@ -50,11 +51,29 @@ export class PledgeService {
 		return this.pledgeRepository.findAll(tenantId, filters ?? {});
 	}
 
+	async getUrgent(
+		tenantId: string,
+		limit: number,
+	): Promise<PledgeWithRelations[]> {
+		return this.pledgeRepository.findUrgent(tenantId, limit);
+	}
+
+	async getReport(
+		tenantId: string,
+		options: { dateFrom?: Date; dateTo?: Date } = {},
+	): Promise<PledgesReportResult> {
+		return this.pledgeRepository.pledgesReport(
+			tenantId,
+			options.dateFrom,
+			options.dateTo,
+		);
+	}
+
 	async update(
 		tenantId: string,
 		id: string,
 		data: UpdatePledgeInput,
-	): Promise<PledgeWithAmounts> {
+	): Promise<PledgeWithRelations> {
 		await this.getById(tenantId, id);
 		await this.pledgeRepository.update(tenantId, id, data);
 		return this.getById(tenantId, id);

@@ -37,14 +37,18 @@ import { TransactionFeatureService } from "../../services/transaction-feature.se
 import {
 	BulkCreateTransactionsRequestDto,
 	CreateTransactionRequestDto,
+	GiversReportQueryRequestDto,
 	TransactionFiltersRequestDto,
 	TransactionSummaryQueryRequestDto,
+	UnattributedSummaryQueryRequestDto,
 	UpdateTransactionRequestDto,
 } from "./requests";
 import {
+	GiversReportResponseDto,
 	TransactionListResponseDto,
 	TransactionResponseDto,
 	TransactionSummaryResponseDto,
+	UnattributedSummaryResponseDto,
 } from "./responses";
 
 // Tenant-management intent for transactions. Available to admins (and
@@ -140,7 +144,7 @@ export class TransactionTenantController {
 	@ApiOperation({
 		summary: "Aggregate transaction totals for the admin dashboard",
 		description:
-			"Returns totals-by-type and a monthly trend for the last 12 months. Restricted to admins.",
+			"Returns totals, average, first/last gift dates, by-type breakdown, and a monthly trend. Respects the same filters as the list endpoint (type, campaign, member, soft-delete state) so the summary card cannot diverge from the table rows.",
 	})
 	@ApiOkResponse({ type: TransactionSummaryResponseDto })
 	async summary(
@@ -154,7 +158,71 @@ export class TransactionTenantController {
 			dateTo: query.dateTo,
 			months: query.months,
 			memberId: query.memberId,
+			campaignId: query.campaignId,
+			type: query.type,
+			includeDeleted: query.includeDeleted,
+			onlyDeleted: query.onlyDeleted,
 		}) as unknown as Promise<TransactionSummaryResponseDto>;
+	}
+
+	// Counts + totals of unattributed gifts (anonymous or no-campaign) in
+	// the window. Powers the admin dashboard's UnattributedCallout.
+	// Static segment — declared above the ":id" routes.
+	@Get("unattributed")
+	@ApiOperation({
+		summary: "Unattributed gift counts and totals for the dashboard callout",
+		description:
+			"Server-side aggregation. Replaces the FE's previous fetch-500-and-count pattern, which silently truncated when traffic exceeded the limit.",
+	})
+	@ApiOkResponse({ type: UnattributedSummaryResponseDto })
+	async unattributed(
+		@CurrentTenant() tenant: TenantContext,
+		@CurrentAbility() ability: AppAbility,
+		@Query() query: UnattributedSummaryQueryRequestDto,
+	): Promise<UnattributedSummaryResponseDto> {
+		assertCan(ability, "read", "Transaction");
+		const now = new Date();
+		const defaultFrom = new Date(now);
+		defaultFrom.setUTCDate(defaultFrom.getUTCDate() - 7);
+		defaultFrom.setUTCHours(0, 0, 0, 0);
+		const dateFrom = query.dateFrom ?? defaultFrom;
+		const dateTo = query.dateTo ?? now;
+		return this.transactionFeatureService.unattributedSummary(
+			tenant,
+			dateFrom,
+			dateTo,
+		) as unknown as Promise<UnattributedSummaryResponseDto>;
+	}
+
+	// Static "reports/givers" segment must be declared before the ":id"
+	// routes below or Nest's matcher would treat "reports" as an id.
+	@Get("reports/givers")
+	@ApiOperation({
+		summary: "Top-N givers report (admin Reports → Givers tab)",
+		description:
+			"Pre-aggregated server-side: ranks members by total amount in the window, returning per-member type / campaign / monthly breakdowns. Replaces the FE's fetch-all-transactions-and-reduce pattern.",
+	})
+	@ApiOkResponse({ type: GiversReportResponseDto })
+	async giversReport(
+		@CurrentTenant() tenant: TenantContext,
+		@CurrentAbility() ability: AppAbility,
+		@Query() query: GiversReportQueryRequestDto,
+	): Promise<GiversReportResponseDto> {
+		assertCan(ability, "read", "Transaction");
+		const now = new Date();
+		const defaultFrom = new Date(now);
+		defaultFrom.setUTCMonth(defaultFrom.getUTCMonth() - 11);
+		defaultFrom.setUTCDate(1);
+		defaultFrom.setUTCHours(0, 0, 0, 0);
+		const dateFrom = query.dateFrom ?? defaultFrom;
+		const dateTo = query.dateTo ?? now;
+		const limit = query.limit ?? 50;
+		return this.transactionFeatureService.giversReport(
+			tenant,
+			dateFrom,
+			dateTo,
+			limit,
+		) as unknown as Promise<GiversReportResponseDto>;
 	}
 
 	@Get(":id")

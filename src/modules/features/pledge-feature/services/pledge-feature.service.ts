@@ -7,7 +7,11 @@ import { CampaignService } from "@modules/core/campaign/services/campaign.servic
 import { CampaignItemService } from "@modules/core/campaign-item/services/campaign-item.service";
 import { MemberService } from "@modules/core/member/services/member.service";
 import { PledgeFilters } from "@modules/core/pledge/pledge.types";
-import { PledgeListResult } from "@modules/core/pledge/repository/pledge.repository";
+import {
+	PledgeListResult,
+	PledgesReportResult,
+	PledgeWithRelations,
+} from "@modules/core/pledge/repository/pledge.repository";
 import { PledgeService } from "@modules/core/pledge/services/pledge.service";
 import { UserService } from "@modules/core/user/services/user.service";
 import { BadRequestException, Injectable } from "@nestjs/common";
@@ -92,6 +96,22 @@ export class PledgeFeatureService {
 		filters: PledgeFilters,
 	): Promise<PledgeListResult> {
 		return this.pledgeService.getAll(tenant.tenantId, filters);
+	}
+
+	async urgent(
+		tenant: TenantContext,
+		limit: number,
+	): Promise<PledgeWithRelations[]> {
+		return this.pledgeService.getUrgent(tenant.tenantId, limit);
+	}
+
+	// Cohort-style report for the admin Reports → Pledge Dynamics tab.
+	// Date range applies to `pledge.createdAt` (start of the commitment).
+	async report(
+		tenant: TenantContext,
+		options: { dateFrom?: Date; dateTo?: Date } = {},
+	): Promise<PledgesReportResult> {
+		return this.pledgeService.getReport(tenant.tenantId, options);
 	}
 
 	async getById(
