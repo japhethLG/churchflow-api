@@ -100,9 +100,9 @@ export class PledgeFeatureService {
 
 	async urgent(
 		tenant: TenantContext,
-		limit: number,
+		options: { limit: number; dateFrom?: Date; dateTo?: Date },
 	): Promise<PledgeWithRelations[]> {
-		return this.pledgeService.getUrgent(tenant.tenantId, limit);
+		return this.pledgeService.getUrgent(tenant.tenantId, options);
 	}
 
 	// Cohort-style report for the admin Reports → Pledge Dynamics tab.
@@ -118,7 +118,7 @@ export class PledgeFeatureService {
 		tenant: TenantContext,
 		id: string,
 		options: { includeDeleted?: boolean } = {},
-	): Promise<Pledge> {
+	): Promise<PledgeWithRelations> {
 		return options.includeDeleted
 			? this.pledgeService.getByIdIncludingDeleted(tenant.tenantId, id)
 			: this.pledgeService.getById(tenant.tenantId, id);
@@ -129,7 +129,7 @@ export class PledgeFeatureService {
 		tenant: TenantContext,
 		id: string,
 		data: UpdatePledgeServiceInput,
-	): Promise<Pledge> {
+	): Promise<PledgeWithRelations> {
 		const pledge = await this.pledgeService.update(tenant.tenantId, id, data);
 		await this.auditService.record({
 			tenantId: tenant.tenantId,

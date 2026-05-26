@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { AMOUNT_EXAMPLE } from "@shared/dto-examples";
 import { Expose, Type } from "class-transformer";
 
+import { TransactionSummaryByCampaignDto } from "./transaction-summary-by-campaign.response";
 import { TransactionSummaryByMonthDto } from "./transaction-summary-by-month.response";
 import { TransactionSummaryByTypeDto } from "./transaction-summary-by-type.response";
 
@@ -56,4 +57,13 @@ export class TransactionSummaryResponseDto {
 	@Type(() => TransactionSummaryByMonthDto)
 	@ApiProperty({ type: [TransactionSummaryByMonthDto] })
 	byMonth!: TransactionSummaryByMonthDto[];
+
+	@Expose()
+	@Type(() => TransactionSummaryByCampaignDto)
+	@ApiProperty({
+		type: [TransactionSummaryByCampaignDto],
+		description:
+			"Per-campaign totals for the window. Ordered by total desc. Buckets with null campaignId capture gifts not attributed to any campaign.",
+	})
+	byCampaign!: TransactionSummaryByCampaignDto[];
 }

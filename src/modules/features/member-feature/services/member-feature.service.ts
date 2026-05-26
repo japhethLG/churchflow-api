@@ -85,10 +85,10 @@ export class MemberFeatureService {
 		private readonly pledgeService: PledgeService,
 	) {}
 
-	// Pulls lifetime giving + active/fulfilled/cancelled pledge stats for
-	// one member in two parallel queries. Replaces the FE's previous
-	// fetch-500-and-reduce pattern, which silently undercounted any
-	// member with >500 lifetime transactions or >200 pledges.
+	// Lifetime giving + pledge stats for one member. Both halves are
+	// SQL-side aggregations — transaction summary uses the uncapped
+	// /transactions/summary path, pledge stats use a single groupBy by
+	// status on the denormalized paidAmount/pledgedAmount columns.
 	async summary(
 		tenant: TenantContext,
 		memberId: string,
@@ -99,36 +99,15 @@ export class MemberFeatureService {
 		const RANGE_FLOOR = new Date(Date.UTC(1970, 0, 1));
 		const RANGE_CEILING = new Date(Date.UTC(2999, 11, 31, 23, 59, 59, 999));
 
-		const [txSummary, memberPledges] = await Promise.all([
+		const [txSummary, pledgeStats] = await Promise.all([
 			this.transactionService.summary(
 				tenant.tenantId,
 				RANGE_FLOOR,
 				RANGE_CEILING,
 				{ memberId },
 			),
-			// All of this member's pledges. N is small per member.
-			this.pledgeService.getAll(tenant.tenantId, {
-				memberId,
-				limit: 10000,
-			}),
+			this.pledgeService.getStatsForMember(tenant.tenantId, memberId),
 		]);
-
-		let activePledgesCount = 0;
-		let fulfilledPledgesCount = 0;
-		let cancelledPledgesCount = 0;
-		let pledgedTotal = 0;
-		let paidTotal = 0;
-		for (const p of memberPledges.items) {
-			pledgedTotal += Number(p.pledgedAmount);
-			paidTotal += p.paidAmount;
-			if (p.status === "ACTIVE") {
-				activePledgesCount += 1;
-			} else if (p.status === "FULFILLED") {
-				fulfilledPledgesCount += 1;
-			} else if (p.status === "CANCELLED") {
-				cancelledPledgesCount += 1;
-			}
-		}
 
 		return {
 			lifetimeGiving: txSummary.total,
@@ -136,12 +115,15 @@ export class MemberFeatureService {
 			avgGift: txSummary.avg,
 			firstGiftDate: txSummary.firstDate,
 			lastGiftDate: txSummary.lastDate,
-			activePledgesCount,
-			fulfilledPledgesCount,
-			cancelledPledgesCount,
-			pledgedTotal,
-			paidTotal,
-			pledgeFulfillmentPct: pledgedTotal > 0 ? paidTotal / pledgedTotal : 0,
+			activePledgesCount: pledgeStats.activePledgesCount,
+			fulfilledPledgesCount: pledgeStats.fulfilledPledgesCount,
+			cancelledPledgesCount: pledgeStats.cancelledPledgesCount,
+			pledgedTotal: pledgeStats.pledgedTotal,
+			paidTotal: pledgeStats.paidTotal,
+			pledgeFulfillmentPct:
+				pledgeStats.pledgedTotal > 0
+					? pledgeStats.paidTotal / pledgeStats.pledgedTotal
+					: 0,
 		};
 	}
 

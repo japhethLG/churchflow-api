@@ -14,6 +14,11 @@ model Pledge {
   campaignItemId String?
   memberId       String
   pledgedAmount  Decimal      @db.Decimal(14, 2)
+  // Denormalized running sum of transactions.amount for this pledge.
+  // Maintained by TransactionFeatureService on every Tx create/update/
+  // delete/restore. Backfilled on initial migration. Allows SQL-side
+  // outstanding/fulfillment math without joining transactions.
+  paidAmount     Decimal      @db.Decimal(14, 2) @default(0)
   status         PledgeStatus @default(ACTIVE)
   note           String?
   createdAt        DateTime  @default(now())
@@ -31,4 +36,6 @@ model Pledge {
   @@index([tenantId, campaignId])
   @@index([tenantId, memberId])
   @@index([tenantId, campaignItemId])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
 }

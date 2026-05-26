@@ -1,19 +1,41 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { ID_EXAMPLE } from "@shared/dto-examples";
-import { ArrayMaxSize, ArrayUnique, IsArray, IsString } from "class-validator";
+import { Transform } from "class-transformer";
+import {
+	ArrayMaxSize,
+	ArrayMinSize,
+	ArrayUnique,
+	IsArray,
+	IsString,
+} from "class-validator";
 
-// Body for POST /campaigns/progress/batch. Caps the request at 100 ids
-// to keep the per-call cost bounded — the dashboard never asks for more
-// than a handful at a time. Larger batches should paginate at the FE.
+// Query DTO for GET /campaigns/progress/batch. `ids` arrives as a comma-
+// separated string; we split + dedupe in the @Transform so the validator
+// sees an array. Capped at 100 ids to keep per-call cost bounded — the
+// dashboard never asks for more than a handful at a time.
 export class CampaignProgressBatchRequestDto {
 	@ApiProperty({
-		type: [String],
-		example: [ID_EXAMPLE],
-		description: "Campaign IDs to fetch progress for. Max 100.",
+		type: String,
+		example: ID_EXAMPLE,
+		description:
+			"Comma-separated list of campaign IDs to fetch progress for. Max 100.",
+	})
+	@Transform(({ value }) => {
+		if (Array.isArray(value)) {
+			return value;
+		}
+		if (typeof value !== "string") {
+			return value;
+		}
+		return value
+			.split(",")
+			.map((s) => s.trim())
+			.filter(Boolean);
 	})
 	@IsArray()
+	@ArrayMinSize(1)
 	@ArrayUnique()
 	@ArrayMaxSize(100)
 	@IsString({ each: true })
-	campaignIds!: string[];
+	ids!: string[];
 }

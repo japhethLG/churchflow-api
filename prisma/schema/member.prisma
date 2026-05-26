@@ -35,4 +35,5 @@ model Member {
   @@unique([tenantId, userId])
   @@index([tenantId, status])
   @@index([tenantId, email])
+  @@index([tenantId, createdAt])
 }

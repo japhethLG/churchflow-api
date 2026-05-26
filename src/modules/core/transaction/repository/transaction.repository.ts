@@ -33,7 +33,7 @@ export type TransactionRelations = {
 		title: string;
 		deletedAt: Date | null;
 	} | null;
-	campaignItem: { id: string; title: string } | null;
+	campaignItem: { id: string; title: string; deletedAt: Date | null } | null;
 };
 
 export type TransactionWithRelations = Transaction & TransactionRelations;
@@ -42,6 +42,14 @@ export interface TransactionListResult {
 	items: TransactionWithRelations[];
 	total: number;
 	sum: number;
+}
+
+export interface TransactionSummaryByCampaignBucket {
+	campaignId: string | null;
+	campaignTitle: string;
+	campaignDeletedAt: string | null;
+	total: number;
+	count: number;
 }
 
 export interface TransactionSummaryResult {
@@ -57,6 +65,7 @@ export interface TransactionSummaryResult {
 		avg: number;
 	}>;
 	byMonth: Array<{ month: string; total: number; count: number }>;
+	byCampaign: TransactionSummaryByCampaignBucket[];
 }
 
 export interface TransactionSummaryOptions {
@@ -155,6 +164,7 @@ const TRANSACTION_RELATION_INCLUDE = {
 		select: {
 			id: true,
 			title: true,
+			deletedAt: true,
 		},
 	},
 } as const;
@@ -317,44 +327,102 @@ export class TransactionRepository {
 			options,
 		);
 
-		const [aggregate, byTypeRaw, rows] = await Promise.all([
-			this.prisma.transaction.aggregate(
-				wrap({
-					where,
-					_sum: { amount: true as const },
-					_count: { _all: true as const },
-					_min: { date: true as const },
-					_max: { date: true as const },
-				}),
-			),
-			this.prisma.transaction.groupBy(
-				wrap({
-					by: ["type"] as const,
-					where,
-					_sum: { amount: true as const },
-					_count: { _all: true as const },
-				}),
-			),
-			// Bucket by month in JS so the soft-delete extension's auto-filter
-			// applies. $queryRaw bypasses the extension and would surface
-			// tombstones.
-			this.prisma.transaction.findMany(
-				wrap({ where, select: { date: true, amount: true } }),
-			),
-		]);
+		// byMonth: one parallel aggregate per UTC month in the window.
+		// Uses the (tenantId, date) index. Replaces the previous "pull
+		// every row and bucket in JS" pattern — no row transfer, no JS
+		// loop over individual transactions. Bounded above by the
+		// window length (at most ~60 months for a 5-year report).
+		const monthStart = dayjs.utc(dateFrom).startOf("month");
+		const monthEndInclusive = dayjs.utc(dateTo).startOf("month");
+		const monthCount =
+			Math.max(0, monthEndInclusive.diff(monthStart, "month")) + 1;
+		const months = Array.from({ length: monthCount }, (_, i) =>
+			monthStart.add(i, "month"),
+		);
 
-		const byMonthMap = new Map<string, { total: number; count: number }>();
-		for (const row of rows) {
-			const month = dayjs(row.date).format("YYYY-MM");
-			const bucket = byMonthMap.get(month) ?? { total: 0, count: 0 };
-			bucket.total += Number(row.amount);
-			bucket.count += 1;
-			byMonthMap.set(month, bucket);
-		}
+		const [aggregate, byTypeRaw, byCampaignRaw, monthAggregates] =
+			await Promise.all([
+				this.prisma.transaction.aggregate(
+					wrap({
+						where,
+						_sum: { amount: true as const },
+						_count: { _all: true as const },
+						_min: { date: true as const },
+						_max: { date: true as const },
+					}),
+				),
+				this.prisma.transaction.groupBy(
+					wrap({
+						by: ["type"] as const,
+						where,
+						_sum: { amount: true as const },
+						_count: { _all: true as const },
+					}),
+				),
+				this.prisma.transaction.groupBy(
+					wrap({
+						by: ["campaignId"] as const,
+						where,
+						_sum: { amount: true as const },
+						_count: { _all: true as const },
+					}),
+				),
+				Promise.all(
+					months.map((m) => {
+						const monthFrom = m.toDate();
+						const monthTo = m.endOf("month").toDate();
+						const monthWhere: Prisma.TransactionWhereInput = {
+							...(where as Prisma.TransactionWhereInput),
+							date: { gte: monthFrom, lte: monthTo },
+						};
+						return this.prisma.transaction.aggregate(
+							wrap({
+								where: monthWhere,
+								_sum: { amount: true as const },
+								_count: { _all: true as const },
+							}),
+						);
+					}),
+				),
+			]);
 
-		const byMonth = Array.from(byMonthMap.entries())
-			.sort(([a], [b]) => a.localeCompare(b))
-			.map(([month, agg]) => ({ month, ...agg }));
+		const byMonth = months.map((m, i) => ({
+			month: m.format("YYYY-MM"),
+			total: Number(monthAggregates[i]._sum.amount ?? 0),
+			count: monthAggregates[i]._count._all,
+		}));
+
+		// Resolve campaign titles + tombstone flags for the byCampaign
+		// breakdown. `withDeleted` so archived campaigns still surface a
+		// label (matches the rest of the file's tombstone-aware embeds).
+		const campaignIds = byCampaignRaw
+			.map((b) => b.campaignId)
+			.filter((id): id is string => id !== null);
+		const campaignLookup =
+			campaignIds.length > 0
+				? await this.prisma.campaign.findMany(
+						withDeleted("Campaign", {
+							where: { id: { in: campaignIds } },
+							select: { id: true, title: true, deletedAt: true },
+						}),
+					)
+				: [];
+		const campaignById = new Map(campaignLookup.map((c) => [c.id, c]));
+
+		const byCampaign: TransactionSummaryByCampaignBucket[] = byCampaignRaw
+			.map((row) => {
+				const c = row.campaignId ? campaignById.get(row.campaignId) : null;
+				return {
+					campaignId: row.campaignId,
+					campaignTitle: c?.title ?? "No campaign",
+					campaignDeletedAt: c?.deletedAt
+						? dayjs(c.deletedAt).toISOString()
+						: null,
+					total: Number(row._sum.amount ?? 0),
+					count: row._count._all,
+				};
+			})
+			.sort((a, b) => b.total - a.total);
 
 		const total = Number(aggregate._sum.amount ?? 0);
 		const count = aggregate._count._all;
@@ -379,6 +447,7 @@ export class TransactionRepository {
 				};
 			}),
 			byMonth,
+			byCampaign,
 		};
 	}
 
@@ -654,7 +723,11 @@ export class TransactionRepository {
 				title: string;
 				deletedAt: Date | null;
 			} | null;
-			campaignItem?: { id: string; title: string } | null;
+			campaignItem?: {
+				id: string;
+				title: string;
+				deletedAt: Date | null;
+			} | null;
 		},
 	): TransactionWithRelations {
 		const { member, campaign, campaignItem, ...rest } = row;

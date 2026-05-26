@@ -5,4 +5,5 @@ export class MyPledgeCampaignItemDto extends PickType(CampaignItemDto, [
 	"id",
 	"title",
 	"deadline",
+	"deletedAt",
 ] as const) {}

@@ -130,7 +130,11 @@ export class PledgeTenantController {
 	): Promise<PledgeListResponseDto> {
 		assertCan(ability, "read", "Pledge");
 		const limit = query.limit ?? 50;
-		const items = await this.pledgeFeatureService.urgent(tenant, limit);
+		const items = await this.pledgeFeatureService.urgent(tenant, {
+			limit,
+			dateFrom: query.dateFrom,
+			dateTo: query.dateTo,
+		});
 		const sum = items.reduce((acc, p) => acc + Number(p.pledgedAmount), 0);
 		return {
 			items: items as unknown as PledgeResponseDto[],

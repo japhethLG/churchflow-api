@@ -3,8 +3,16 @@ import { TransactionType } from "@prisma/client";
 import { DateRangeRequestDto } from "@shared/dto/date-range.request.dto";
 import { StateFilterRequestDto } from "@shared/dto/state-filter.request.dto";
 import { ID_EXAMPLE } from "@shared/dto-examples";
-import { Type } from "class-transformer";
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from "class-validator";
+import { Transform, Type } from "class-transformer";
+import {
+	IsBoolean,
+	IsEnum,
+	IsInt,
+	IsOptional,
+	IsString,
+	Max,
+	Min,
+} from "class-validator";
 
 // Query DTO for the admin transaction summary endpoint. `dateFrom` /
 // `dateTo` bracket `Transaction.date`. When both bounds are absent the
@@ -55,4 +63,23 @@ export class TransactionSummaryQueryRequestDto extends IntersectionType(
 	@IsOptional()
 	@IsEnum(TransactionType)
 	type?: TransactionType;
+
+	@ApiPropertyOptional({
+		type: Boolean,
+		example: true,
+		description:
+			'Set to true for a true-lifetime summary — defeats the 12-month "no-bounds" fallback when both dateFrom and dateTo are omitted. Ignored when explicit bounds are provided.',
+	})
+	@IsOptional()
+	@Transform(({ value }) => {
+		if (value === true || value === "true" || value === 1 || value === "1") {
+			return true;
+		}
+		if (value === false || value === "false" || value === 0 || value === "0") {
+			return false;
+		}
+		return value;
+	})
+	@IsBoolean()
+	lifetime?: boolean;
 }

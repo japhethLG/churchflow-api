@@ -157,6 +157,7 @@ export class TransactionTenantController {
 			dateFrom: query.dateFrom,
 			dateTo: query.dateTo,
 			months: query.months,
+			lifetime: query.lifetime,
 			memberId: query.memberId,
 			campaignId: query.campaignId,
 			type: query.type,

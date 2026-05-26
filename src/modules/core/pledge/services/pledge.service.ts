@@ -53,9 +53,9 @@ export class PledgeService {
 
 	async getUrgent(
 		tenantId: string,
-		limit: number,
+		options: { limit: number; dateFrom?: Date; dateTo?: Date },
 	): Promise<PledgeWithRelations[]> {
-		return this.pledgeRepository.findUrgent(tenantId, limit);
+		return this.pledgeRepository.findUrgent(tenantId, options);
 	}
 
 	async getReport(
@@ -103,5 +103,21 @@ export class PledgeService {
 			fromMemberId,
 			toMemberId,
 		);
+	}
+
+	// Called by TransactionFeatureService on every Tx mutation that touches
+	// a pledge (create/update/delete/restore). The repository handles
+	// atomicity + the ACTIVE↔FULFILLED auto-transition.
+	async adjustPaidAmount(
+		tenantId: string,
+		id: string,
+		delta: number,
+	): Promise<Pledge> {
+		return this.pledgeRepository.adjustPaidAmount(tenantId, id, delta);
+	}
+
+	// Aggregated per-member pledge stats — used by MemberFeatureService.
+	async getStatsForMember(tenantId: string, memberId: string) {
+		return this.pledgeRepository.statsForMember(tenantId, memberId);
 	}
 }

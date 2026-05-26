@@ -48,6 +48,9 @@ const WHERE_LOGICAL_KEYS = new Set(["AND", "OR", "NOT"]);
 /** to-many relation-filter keys; their value is a sub-where. */
 const TO_MANY_FILTER_KEYS = new Set(["some", "every", "none"]);
 
+/** to-one filter keys (Prisma's explicit `is` / `isNot` filters). */
+const TO_ONE_FILTER_KEYS = new Set(["is", "isNot"]);
+
 function injectedValue(mode: WalkerMode): null | undefined {
 	return mode === "filter" ? null : undefined;
 }
@@ -128,14 +131,51 @@ function processWhere(
 			}
 			out[key] = next;
 		} else {
-			out[key] = mergeDeletedAt(
-				mode,
-				processWhere(
-					mode,
-					relation.targetModel,
-					value as Record<string, unknown>,
-				),
+			// To-one: handle Prisma's explicit `is` / `isNot` filters by
+			// recursing INTO them. Injecting `deletedAt: null` at the outer
+			// level alongside `is:` produces invalid Prisma syntax (Prisma
+			// rejects siblings of `is`/`isNot`). For the bare shorthand
+			// (no `is:`), keep the previous behavior of injecting at the
+			// relation-value level.
+			const predicate = value as Record<string, unknown>;
+			const usesExplicitFilter = Object.keys(predicate).some((k) =>
+				TO_ONE_FILTER_KEYS.has(k),
 			);
+			if (usesExplicitFilter) {
+				const next: Record<string, unknown> = { ...predicate };
+				for (const filterKey of TO_ONE_FILTER_KEYS) {
+					if (!(filterKey in next)) {
+						continue;
+					}
+					const inner = next[filterKey];
+					// `{ is: null }` / `{ isNot: null }` mean "no related row"
+					// / "any related row" — no inner where to inject into.
+					if (inner === null) {
+						continue;
+					}
+					if (typeof inner !== "object") {
+						continue;
+					}
+					next[filterKey] = mergeDeletedAt(
+						mode,
+						processWhere(
+							mode,
+							relation.targetModel,
+							inner as Record<string, unknown>,
+						),
+					);
+				}
+				out[key] = next;
+			} else {
+				out[key] = mergeDeletedAt(
+					mode,
+					processWhere(
+						mode,
+						relation.targetModel,
+						value as Record<string, unknown>,
+					),
+				);
+			}
 		}
 	}
 

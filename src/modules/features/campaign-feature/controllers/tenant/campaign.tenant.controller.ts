@@ -108,23 +108,31 @@ export class CampaignTenantController {
 
 	// Batch progress lookup. Static "progress/batch" path — declared
 	// above the ":id" routes so Nest's matcher does not try to treat
-	// "progress" as a campaign id.
-	@Post("progress/batch")
+	// "progress" as a campaign id. GET so the query is cacheable and
+	// the FE's TanStack query key follows the standard [path, init]
+	// shape (vs. a POST-shaped read that bypasses invalidation).
+	@Get("progress/batch")
 	@ApiOperation({
 		summary: "Batch campaign progress (pledged + raised totals)",
 		description:
 			"Returns one entry per requested campaign id. Replaces the FE's previous fan-out of N individual /progress calls when rendering many progress bars (dashboard deadline-watch / outstanding-pledges cards).",
 	})
+	@ApiQuery({
+		name: "ids",
+		required: true,
+		type: String,
+		description: "Comma-separated campaign IDs. Max 100.",
+	})
 	@ApiOkResponse({ type: CampaignProgressBatchResponseDto })
 	async progressBatch(
 		@CurrentTenant() tenant: TenantContext,
 		@CurrentAbility() ability: AppAbility,
-		@Body() body: CampaignProgressBatchRequestDto,
+		@Query() query: CampaignProgressBatchRequestDto,
 	): Promise<CampaignProgressBatchResponseDto> {
 		assertCan(ability, "read", "Campaign");
 		const items = await this.campaignFeatureService.progressMany(
 			tenant,
-			body.campaignIds,
+			query.ids,
 		);
 		return { items };
 	}

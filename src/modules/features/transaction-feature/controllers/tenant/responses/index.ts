@@ -10,6 +10,7 @@ export { TransactionListResponseDto } from "./transaction-list.response";
 export { TransactionListMetaDto } from "./transaction-list-meta.response";
 export { TransactionMemberDto } from "./transaction-member.response";
 export { TransactionSummaryResponseDto } from "./transaction-summary.response";
+export { TransactionSummaryByCampaignDto } from "./transaction-summary-by-campaign.response";
 export { TransactionSummaryByMonthDto } from "./transaction-summary-by-month.response";
 export { TransactionSummaryByTypeDto } from "./transaction-summary-by-type.response";
 export { UnattributedSummaryResponseDto } from "./unattributed-summary.response";

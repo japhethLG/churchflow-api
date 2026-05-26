@@ -1,12 +1,20 @@
-import { ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiPropertyOptional, IntersectionType } from "@nestjs/swagger";
+import { DateRangeRequestDto } from "@shared/dto/date-range.request.dto";
 import { Type } from "class-transformer";
 import { IsInt, IsOptional, Max, Min } from "class-validator";
 
 // Query for the admin dashboard's outstanding-pledges card.
-// `/pledges/urgent` ALWAYS returns active pledges whose resolved deadline
-// is past-due, due-soon (≤14d), or on-track-within-30d. Auto-fulfilled
+// `/pledges/urgent` returns active pledges whose resolved deadline is
+// past-due, due-soon (≤14d), or on-track-within-30d. Auto-fulfilled
 // rows and no-deadline rows are excluded server-side.
-export class UrgentPledgesQueryRequestDto {
+//
+// `dateFrom`/`dateTo` (inherited from DateRangeRequestDto) bracket
+// `Pledge.createdAt` — same cohort semantic as the Reports page. Lets
+// admins scope the urgent card to e.g. YTD pledges. Both bounds are
+// optional; omit for the all-time urgent list.
+export class UrgentPledgesQueryRequestDto extends IntersectionType(
+	DateRangeRequestDto,
+) {
 	@ApiPropertyOptional({
 		example: 8,
 		minimum: 1,
