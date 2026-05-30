@@ -51,16 +51,14 @@ async function bootstrap(): Promise<void> {
 		exposedHeaders: ["X-Claims-Refreshed"],
 	});
 
-	// Scalar/Swagger exposes the full API surface unauthenticated, so keep
-	// it out of production. FE type generation (`npm run api:types`) hits
-	// the dev server, which still mounts it. Force-enable in prod with
-	// ENABLE_SWAGGER=true if a gated docs host is ever needed.
-	if (
-		process.env.NODE_ENV !== "production" ||
-		process.env.ENABLE_SWAGGER === "true"
-	) {
-		setupSwagger(app);
-	}
+	// Swagger/Scalar is mounted in ALL environments on purpose: the frontend's
+	// deploy pipeline generates its OpenAPI types from the LIVE production
+	// /api-docs-json at build time, so the spec must remain available in prod.
+	// (The audit suggested guarding this off in prod to reduce the exposed API
+	// surface — but doing so breaks the FE CD's type-generation step. Lock it
+	// down only after decoupling FE type-gen from the live prod spec, e.g. by
+	// generating types from a CI-spun-up backend or a committed schema.)
+	setupSwagger(app);
 
 	const configService = app.get(ConfigService);
 	const port = configService.get<number>("PORT") ?? 8000;
