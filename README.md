@@ -19,6 +19,9 @@ The product spec lives in [`../church-app/SPECS.md`](../church-app/SPECS.md).
 - **`class-validator` / `class-transformer`** at the HTTP boundary
 - **`nodemailer`** with Gmail / Resend / console providers (auto-selected
   from env vars)
+- **`@nestjs/cache-manager`** — global in-memory `CacheModule` backing
+  tenant slug resolution + platform stats
+- **`compression`** — gzip on responses (`main.ts`)
 - **Biome 2** for lint + format
 - **Vitest + Testcontainers** for integration tests (real Postgres, no mocks)
 
@@ -45,6 +48,11 @@ npm run start:dev
 npm run test:integration
 ```
 
+Optional performance tunables (sensible defaults; see [`.env.example`](.env.example)):
+`AUTH_VERIFY_CACHE_TTL_MS` (auth-verify cache, default 30000), the
+`DATABASE_POOL_*` / `DATABASE_STATEMENT_TIMEOUT_MS` pg-pool knobs, and
+`DISABLE_HTTP_COMPRESSION=true` when fronted by a compressing proxy.
+
 API runs on `http://localhost:8000/api/v1/`.
 
 | Endpoint | Purpose |
@@ -54,7 +62,10 @@ API runs on `http://localhost:8000/api/v1/`.
 | `http://localhost:8000/api/v1/health` | Liveness probe |
 
 The docs paths are intentionally **not** under `/api`. The frontend regenerates
-its TypeScript types via `openapi-typescript` against `/api-docs-json`.
+its TypeScript types via `openapi-typescript` against `/api-docs-json` — at
+build time against the **live production** spec, so Swagger stays mounted in
+prod (don't guard it off) and a release that **adds** endpoints must deploy the
+**backend before the frontend**.
 
 ## Architecture — 5-tier (Griffin-derived)
 
@@ -103,7 +114,8 @@ scripts/
 └── seed-super-admin.ts     # promote a user to SUPER_ADMIN
 
 src/
-├── main.ts                 # bootstrap — /api, v1, CORS, ValidationPipe, Scalar docs
+├── main.ts                 # bootstrap — /api, v1, CORS, gzip (compression),
+│                           #   request-timing LoggingInterceptor, ValidationPipe, Scalar docs
 ├── main.module.ts          # wires every layer + global APP_GUARDs
 ├── main.controller.ts      # /health
 │
@@ -216,13 +228,17 @@ interface AuthUser {
 ### Request pipeline
 
 1. **`FirebaseAuthGuard`** (global `APP_GUARD`) — verifies the bearer
-   token, populates `req.user`. Bypassed on `@Public()` handlers.
+   token, populates `req.user`. Bypassed on `@Public()` handlers. The
+   `checkRevoked` verify is **short-TTL cached** (a navigation's parallel
+   requests share one Firebase round-trip), so the guard does **not** hit
+   Firebase on every request — see [authentication caching](#caching).
 2. **`RolesGuard`** (global `APP_GUARD`) — enforces
    `@Roles('SUPER_ADMIN')` against `user.isSuperAdmin`.
 3. **`TenantGuard`** (opt-in `@UseGuards(TenantGuard)` on
-   `/tenants/:tenantId/...` routes) — resolves the tenant (UUID or slug),
-   verifies membership (or super-admin), optionally enforces
-   `@TenantRoles('ADMIN')`, and writes `req.tenant: TenantContext`.
+   `/tenants/:tenantId/...` routes) — resolves the tenant (UUID or slug)
+   via the cached `TenantResolverService`, verifies membership (or
+   super-admin), optionally enforces `@TenantRoles('ADMIN')`, and writes
+   `req.tenant: TenantContext`.
 4. **`AbilityInterceptor`** (global `APP_INTERCEPTOR`) — builds the
    request-scoped `AppAbility` from `req.tenant` (or from
    `user.isSuperAdmin` for platform routes).
@@ -244,6 +260,24 @@ caller's own membership/role/super-admin state, it should be tagged
 `@RefreshesClaims()` — `ClaimsRefreshInterceptor` then sets
 `X-Claims-Refreshed: 1` on the response, which the frontend reacts to by
 forcing a token refresh and re-minting its session cookie.
+
+### Caching
+
+Three short-TTL caches keep the hot path off the network/DB:
+
+- **Auth verify** — `FirebaseAdminService` caches successful
+  `verifyIdToken` / `verifySessionCookie` results (still
+  `checkRevoked=true`), keyed by a hash of the credential
+  (`AUTH_VERIFY_CACHE_TTL_MS`, default 30s). `signOutEverywhere()` drops
+  the uid's entries immediately so revocation is instant.
+- **Tenant resolution** — `TenantResolverService` (used by `TenantGuard`)
+  caches the slug-first `:tenantId` lookup (~60s); `tenant-feature.service`
+  invalidates on tenant rename/delete/restore.
+- **Platform stats** — `AdminFeatureService` memoizes platform stats
+  (~60s), busted on mutation.
+
+The latter two ride the global `@nestjs/cache-manager` `CacheModule`. See
+[CLAUDE.md §9.6](CLAUDE.md).
 
 ## DTO conventions
 

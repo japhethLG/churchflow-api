@@ -56,6 +56,8 @@ Full product spec: [`../church-app/SPECS.md`](../church-app/SPECS.md).
 | Email | `nodemailer` | Gmail / Resend / console — auto-selected at boot |
 | API docs | `@nestjs/swagger` + `@scalar/nestjs-api-reference` | Scalar UI `/api-docs`, JSON `/api-docs-json` |
 | Validation | `class-validator` + `class-transformer` | global `ValidationPipe` (whitelist + forbidNonWhitelisted + transform + enableImplicitConversion) |
+| Cache | `@nestjs/cache-manager` | `CacheModule` global (in-memory); backs tenant slug resolution + platform stats (§9.6) |
+| Compression | `compression` | gzip in [main.ts](src/main.ts); `DISABLE_HTTP_COMPRESSION=true` behind a compressing proxy |
 | Lint | Biome 2 | |
 
 ### Path aliases (tsconfig + .swcrc)
@@ -148,8 +150,8 @@ prisma/schema/              # Prisma 7 multi-file schema (auto-merged at build)
 └── audit.prisma            # AuditEvent — append-only
 
 src/
-├── main.ts                 # /api prefix, URI v1, CORS (exposes X-Claims-Refreshed),
-│                           # ValidationPipe, ClaimsRefreshInterceptor +
+├── main.ts                 # /api prefix, URI v1, compression, CORS (exposes X-Claims-Refreshed),
+│                           # ValidationPipe, LoggingInterceptor + ClaimsRefreshInterceptor +
 │                           # GlobalResponseInterceptor, Scalar docs
 ├── main.module.ts          # wires every layer + global APP_GUARDs
 ├── main.controller.ts      # /health
@@ -158,10 +160,12 @@ src/
 ├── infrastructure/         # Layer 0
 │   ├── config/interceptors/
 │   │   ├── global-response.interceptor.ts    # wraps in { success, data }
-│   │   └── claims-refresh.interceptor.ts     # X-Claims-Refreshed: 1 (§9.5)
+│   │   ├── claims-refresh.interceptor.ts     # X-Claims-Refreshed: 1 (§9.5)
+│   │   └── logging.interceptor.ts            # per-request timing (method + route + status + ms)
 │   ├── prisma-client/      # PrismaClientService + soft-delete extension
 │   ├── firebase-auth/
-│   │   ├── firebase-admin.service.ts
+│   │   ├── firebase-admin.service.ts         # verify*(): short-TTL, uid-invalidatable cache (§9.6)
+│   │   ├── tenant-resolver.service.ts        # cached :tenantId → tenant for TenantGuard (§9.6)
 │   │   ├── user-claims.service.ts            # writes tenantMemberships + isSuperAdmin
 │   │   ├── decorators/                       # @Public, @Roles, @TenantRoles,
 │   │   │                                     #   @CurrentUser, @CurrentTenant, @RefreshesClaims
@@ -237,8 +241,8 @@ src/
         │   │   └── self/                     # /tenants/:tenantId/me/church (member)
         │   ├── services/tenant-feature.service.ts   # unified, no role branches
         │   └── tenant-feature.module.ts
-        ├── member-feature/                   # tenant + self intents
-        ├── campaign-feature/                 # tenant + self intents
+        ├── member-feature/                   # tenant + self intents (tenant adds GET members/giving-trend)
+        ├── campaign-feature/                 # tenant + self intents (both expose GET campaigns/progress/batch)
         ├── pledge-feature/                   # tenant + self intents
         ├── transaction-feature/              # tenant + self intents
         └── invitation-feature/               # tenant + public intents (token lookup/accept)
@@ -280,6 +284,7 @@ The single most important section. Each layer has a specific shape.
 - `this.prisma.*` from a service. Exceptions: documented infra services
   that *cannot* import Core (e.g.
   [user-claims.service.ts](src/infrastructure/firebase-auth/user-claims.service.ts),
+  [tenant-resolver.service.ts](src/infrastructure/firebase-auth/tenant-resolver.service.ts),
   [tenant.guard.ts](src/infrastructure/firebase-auth/guards/tenant.guard.ts)) —
   they carry an in-file comment explaining the trade-off.
 - Hand-stamping `deletedAt: null` in a where clause.
@@ -351,7 +356,8 @@ not role. The URL prefix declares scope; CASL enforces authorization:
 
 ### 6.4 Main module
 
-- Imports `ConfigModule` (global), all infra modules, all cores,
+- Imports `ConfigModule` (global), `CacheModule.register({ isGlobal: true })`
+  (in-memory, app-wide — §9.6), all infra modules, all cores,
   processes, features.
 - Global `APP_GUARD`s in this order:
   1. `FirebaseAuthGuard` — verifies bearer token (skipped on `@Public()`).
@@ -359,9 +365,19 @@ not role. The URL prefix declares scope; CASL enforces authorization:
 - `AbilityInterceptor` is registered as `APP_INTERCEPTOR` inside
   `AuthorizationModule` (colocated with authorization wiring).
 - [`main.ts`](src/main.ts) sets `/api` prefix, URI versioning (`v1`
-  default), CORS (with `X-Claims-Refreshed` exposed), the validation
-  pipe, registers `ClaimsRefreshInterceptor` + `GlobalResponseInterceptor`
-  as global interceptors, calls `setupSwagger(app)`.
+  default), `app.use(compression())` (gzip; skipped when
+  `DISABLE_HTTP_COMPRESSION=true`), CORS (with `X-Claims-Refreshed`
+  exposed), the validation pipe, registers `LoggingInterceptor`
+  (outermost — per-request timing: method + matched route + status + ms)
+  + `ClaimsRefreshInterceptor` + `GlobalResponseInterceptor` as global
+  interceptors, calls `setupSwagger(app)`.
+- **Swagger/Scalar is mounted in ALL environments on purpose** — the
+  frontend's deploy pipeline generates its OpenAPI types from the LIVE
+  production `/api-docs-json` at build time, so the spec must stay
+  available in prod. Do NOT guard it off in prod (it breaks FE
+  type-gen). Corollary: a release that ADDS endpoints must deploy the
+  **backend before the frontend** (the FE build type-checks against the
+  live prod spec).
 
 ### 6.5 Auth feature is exempt
 
@@ -591,7 +607,11 @@ entity/domain group. Prisma 7 merges every `*.prisma` at build time.
   removed that). Injected via `prisma.config.ts` using `env('DATABASE_URL')`.
 - `PrismaClientService` uses the **`PrismaPg` adapter** and passes
   `{ adapter }` to `super()` (Prisma 7 requires `adapter` or
-  `accelerateUrl`).
+  `accelerateUrl`). The adapter gets an **explicit pg pool config**
+  instead of node-postgres defaults, all env-tunable:
+  `DATABASE_POOL_MAX` (10), `DATABASE_POOL_IDLE_TIMEOUT_MS` (30000),
+  `DATABASE_POOL_CONNECTION_TIMEOUT_MS` (5000),
+  `DATABASE_STATEMENT_TIMEOUT_MS` (15000, a per-query backstop).
 - After schema edits, `npm run prisma:generate` to regenerate types.
 - `npm run prisma:migrate` in dev.
 
@@ -759,10 +779,13 @@ user carries a snapshot of every tenant they belong to via the
    `User`, snapshots memberships into custom claims via
    `UserClaimsService.refreshFor`, returns the populated session.
 4. Frontend sends `Authorization: Bearer <idToken>` on subsequent requests.
-5. `FirebaseAuthGuard` (global) verifies on every non-`@Public()` request
-   and attaches `AuthUser` to `req.user`.
+5. `FirebaseAuthGuard` (global) verifies every non-`@Public()` request
+   and attaches `AuthUser` to `req.user`. The verify is `checkRevoked`
+   but **cached short-TTL** (§9.6) — it does NOT hit Firebase on every
+   request.
 6. Routes under `/tenants/:tenantId/...` apply `@UseGuards(TenantGuard)`.
-   `TenantGuard` resolves `:tenantId` (UUID or slug), checks
+   `TenantGuard` resolves `:tenantId` (UUID or slug) via the cached
+   `TenantResolverService` (§9.6), checks
    `user.tenantMemberships[tenant.slug]` (or `isSuperAdmin`), optionally
    enforces `@TenantRoles('ADMIN')`, writes `req.tenant: TenantContext`.
 7. Handlers that change the caller's own claims should be marked
@@ -847,6 +870,34 @@ Do **not** add `@RefreshesClaims()` to a handler that mutates *another*
 user's claims — those users' devices update on their own next token
 refresh.
 
+### 9.6 Caching — auth verify, tenant resolution, platform stats
+
+Three caches keep the hot path off the network/DB. The auth-verify cache
+lives in the Firebase service; the rest go through the global
+`CacheModule` (§6.4).
+
+- **Auth verify** —
+  [`FirebaseAdminService`](src/infrastructure/firebase-auth/firebase-admin.service.ts)
+  wraps `verifyIdToken` / `verifySessionCookie` (still
+  `checkRevoked=true`) in a short-TTL, uid-invalidatable in-process cache
+  keyed by a SHA-256 of the credential. TTL via `AUTH_VERIFY_CACHE_TTL_MS`
+  (default 30000ms; `0` disables). A burst of parallel requests carrying
+  the SAME token (one navigation fans out ~9) shares one network verify
+  instead of N. Only successful verifies are cached; failures re-hit
+  Firebase. `signOutEverywhere()` calls `firebase.invalidateUser(uid)` to
+  drop the user's entries immediately rather than waiting out the TTL.
+- **Tenant resolution** —
+  [`TenantResolverService`](src/infrastructure/firebase-auth/tenant-resolver.service.ts)
+  (infrastructure, so no Infra → Core hole — same exemption as
+  `TenantGuard`, §6.1) resolves `:tenantId` via a cached **slug-first**
+  `findFirst` (~60s TTL). `tenant-feature.service` calls
+  `tenantResolver.invalidate(...)` on tenant rename/delete/restore (pass
+  the old + new slug + id). Tombstones never enter the cache (the
+  soft-delete extension injects `deletedAt: null`).
+- **Platform stats** —
+  [`AdminFeatureService`](src/modules/features/admin-feature/services/admin-feature.service.ts)
+  memoizes the platform stats (~60s) via `cache.wrap`, busted on mutation.
+
 ---
 
 ## 10. Adding a Prisma entity — the only workflow worth listing
@@ -888,6 +939,8 @@ those instructions live in §6 and §7 and aren't repeated here.
 | Assuming `pledge.campaign` is non-null when the campaign might be archived | Required to-one relations surface tombstones; check `pledge.campaign.deletedAt` |
 | Threading `deletedAt: undefined` through nested `include` by hand | Use `withDeleted(modelName, args)` |
 | `$queryRaw` over soft-deletable tables | Raw SQL bypasses the extension and returns tombstones; use `groupBy` / `aggregate` / `findMany`-plus-JS-bucket |
+| One `aggregate`/`groupBy` per month for a time series (the old fan-out) | A single windowed `findMany` (`select` the date + value) + JS bucket — one query, soft-delete-safe (see `TransactionRepository.summary` `byMonth`) |
+| Guarding Swagger/`/api-docs-json` off in prod | Leave it mounted — FE type-gen reads the live prod spec at build (§6.4) |
 | Handler without `@ApiOperation` or response decorator | OpenAPI contract is incomplete; add them |
 | Reading `tenant.role` outside `ability.factory.ts` | Use `assertCan(ability, action, subject)` |
 | Per-role helpers in services (`ensureMemberVisibility`, `assertAdminOrSuperAdmin`) | Move into `ability.factory.ts`; controllers call `assertCan` |
