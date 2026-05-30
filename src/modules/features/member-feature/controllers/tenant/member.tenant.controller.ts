@@ -37,10 +37,12 @@ import { MemberFeatureService } from "../../services/member-feature.service";
 import {
 	CreateMemberRequestDto,
 	MemberFiltersRequestDto,
+	MemberGivingTrendRequestDto,
 	MergeMembersRequestDto,
 	UpdateMemberRequestDto,
 } from "./requests";
 import {
+	MemberGivingTrendResponseDto,
 	MemberListResponseDto,
 	MemberResponseDto,
 	MemberSummaryResponseDto,
@@ -98,6 +100,25 @@ export class MemberTenantController {
 				total: result.total,
 			},
 		};
+	}
+
+	@Get("giving-trend")
+	@ApiOperation({
+		summary: "Per-member monthly giving series for the members-list sparklines",
+		description:
+			"Returns a shared month axis and, for each requested member id, the total given per month. Scoped to the ids the page is showing so it stays a single small aggregate instead of the FE fetching 500 transactions and bucketing in JS. Declared before :id so the literal path isn't captured as a member id.",
+	})
+	@ApiOkResponse({ type: MemberGivingTrendResponseDto })
+	async givingTrend(
+		@CurrentTenant() tenant: TenantContext,
+		@CurrentAbility() ability: AppAbility,
+		@Query() query: MemberGivingTrendRequestDto,
+	): Promise<MemberGivingTrendResponseDto> {
+		assertCan(ability, "read", "Member");
+		return this.memberFeatureService.givingTrend(tenant, {
+			memberIds: query.memberIds,
+			months: query.months ?? 12,
+		});
 	}
 
 	@Get(":id")

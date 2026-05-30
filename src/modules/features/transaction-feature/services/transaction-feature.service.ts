@@ -350,11 +350,14 @@ export class TransactionFeatureService {
 		if (lifetime) {
 			const lifetimeFrom = new Date(Date.UTC(1970, 0, 1));
 			const lifetimeTo = new Date(Date.UTC(2999, 11, 31, 23, 59, 59, 999));
+			// The lifetime strip only renders scalar totals, so skip the
+			// monthly series — otherwise this unbounded window would try to
+			// build a bucket for every month from 1970 to 2999.
 			return this.transactionService.summary(
 				tenant.tenantId,
 				lifetimeFrom,
 				lifetimeTo,
-				rest,
+				{ ...rest, withMonthly: false },
 			);
 		}
 

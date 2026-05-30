@@ -5,6 +5,7 @@ import { FirebaseAdminService } from "./firebase-admin.service";
 import { FirebaseAuthGuard } from "./guards/firebase-auth.guard";
 import { RolesGuard } from "./guards/roles.guard";
 import { TenantGuard } from "./guards/tenant.guard";
+import { TenantResolverService } from "./tenant-resolver.service";
 import { UserClaimsService } from "./user-claims.service";
 
 @Global()
@@ -15,6 +16,7 @@ import { UserClaimsService } from "./user-claims.service";
 		FirebaseAuthGuard,
 		RolesGuard,
 		TenantGuard,
+		TenantResolverService,
 		UserClaimsService,
 	],
 	exports: [
@@ -22,6 +24,7 @@ import { UserClaimsService } from "./user-claims.service";
 		FirebaseAuthGuard,
 		RolesGuard,
 		TenantGuard,
+		TenantResolverService,
 		UserClaimsService,
 	],
 })

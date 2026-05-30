@@ -1,4 +1,3 @@
-import { PrismaClientService } from "@infrastructure/prisma-client/prisma-client.service";
 import {
 	CanActivate,
 	ExecutionContext,
@@ -13,6 +12,7 @@ import {
 	TENANT_ROLES_KEY,
 	type TenantRole,
 } from "../decorators/roles.decorator";
+import { TenantResolverService } from "../tenant-resolver.service";
 import { AuthUser, TenantContext } from "../types/auth-user.type";
 
 // Applied (via @UseGuards) on controllers that have :tenantId in the
@@ -27,14 +27,15 @@ import { AuthUser, TenantContext } from "../types/auth-user.type";
 // Runs AFTER FirebaseAuthGuard (which is a global APP_GUARD) so
 // `req.user` is reliable here.
 //
-// Uses PrismaClientService directly rather than TenantCoreModule because
-// allowing Infra → Core violates the Griffin layering rule. The lookup is
-// a single findFirst; it's not worth opening a layer hole for that.
+// Delegates the :tenantId → tenant lookup to TenantResolverService (also
+// infrastructure, so no Infra → Core hole), which caches resolutions —
+// the client fan-out fires several tenant-scoped requests per navigation
+// and they'd otherwise each re-run the same lookup.
 @Injectable()
 export class TenantGuard implements CanActivate {
 	constructor(
 		private readonly reflector: Reflector,
-		private readonly prisma: PrismaClientService,
+		private readonly tenantResolver: TenantResolverService,
 	) {}
 
 	async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -56,12 +57,7 @@ export class TenantGuard implements CanActivate {
 			throw new ForbiddenException("Missing :tenantId parameter");
 		}
 
-		const tenant = await this.prisma.tenant.findFirst({
-			where: {
-				OR: [{ id: idOrSlug }, { slug: idOrSlug }],
-			},
-			select: { id: true, slug: true },
-		});
+		const tenant = await this.tenantResolver.resolve(idOrSlug);
 		if (!tenant) {
 			throw new NotFoundException(`Tenant not found: ${idOrSlug}`);
 		}

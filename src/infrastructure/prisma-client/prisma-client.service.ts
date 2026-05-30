@@ -18,8 +18,32 @@ export class PrismaClientService
 			throw new Error("DATABASE_URL is not configured");
 		}
 
+		// Explicit pool sizing. node-postgres otherwise silently applies
+		// max=10, idle=10s, and NO connect/statement timeout — meaning a
+		// burst past 10 in-flight queries queues with unbounded wait, the
+		// pool drops connections between navigations (cold reconnect tax),
+		// and a runaway query can pin a connection forever. All overridable
+		// by env so the pool can be tuned to the deployment (and fronted by
+		// PgBouncer for multi-instance) without a code change.
+		const num = (key: string, fallback: number): number => {
+			const raw = configService.get<string>(key);
+			const parsed = raw === undefined ? Number.NaN : Number(raw);
+			return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+		};
+
 		super({
-			adapter: new PrismaPg({ connectionString }),
+			adapter: new PrismaPg({
+				connectionString,
+				max: num("DATABASE_POOL_MAX", 10),
+				idleTimeoutMillis: num("DATABASE_POOL_IDLE_TIMEOUT_MS", 30_000),
+				connectionTimeoutMillis: num(
+					"DATABASE_POOL_CONNECTION_TIMEOUT_MS",
+					5_000,
+				),
+				// Backstop against a single query pinning a connection. 15s is
+				// generous for our aggregates; raise per-deployment if needed.
+				statement_timeout: num("DATABASE_STATEMENT_TIMEOUT_MS", 15_000),
+			}),
 		});
 	}
 

@@ -24,6 +24,7 @@ import { TenantFeatureModule } from "@modules/features/tenant-feature/tenant-fea
 import { TransactionFeatureModule } from "@modules/features/transaction-feature/transaction-feature.module";
 import { InvitationProcessingModule } from "@modules/processes/invitation-processing/invitation-processing.module";
 import { MemberMergingModule } from "@modules/processes/member-merging/member-merging.module";
+import { CacheModule } from "@nestjs/cache-manager";
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
@@ -66,6 +67,9 @@ const featureModules = [
 @Module({
 	imports: [
 		ConfigModule.forRoot({ isGlobal: true, expandVariables: true }),
+		// In-memory cache shared app-wide (tenant slug resolution, platform
+		// stats). Per-entry TTLs are passed at each set()/wrap() call site.
+		CacheModule.register({ isGlobal: true }),
 		...infrastructureModules,
 		...coreModules,
 		...processModules,

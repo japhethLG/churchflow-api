@@ -4,6 +4,7 @@ import { Transaction } from "@prisma/client";
 import {
 	BulkCreateItem,
 	GiversReportResult,
+	GivingTrendResult,
 	TransactionAggregate,
 	TransactionListResult,
 	TransactionRepository,
@@ -41,6 +42,13 @@ export class TransactionService {
 		filters: { since?: Date } = {},
 	): Promise<TransactionAggregate> {
 		return this.transactionRepository.aggregateForTenant(tenantId, filters);
+	}
+
+	async aggregateByTenant(
+		tenantIds: string[],
+		filters: { since?: Date } = {},
+	): Promise<Map<string, TransactionAggregate>> {
+		return this.transactionRepository.aggregateByTenant(tenantIds, filters);
 	}
 
 	async getById(
@@ -112,6 +120,20 @@ export class TransactionService {
 			dateFrom,
 			dateTo,
 			limit,
+		);
+	}
+
+	async givingTrendByMember(
+		tenantId: string,
+		memberIds: string[],
+		dateFrom: Date,
+		dateTo: Date,
+	): Promise<GivingTrendResult> {
+		return this.transactionRepository.givingTrendByMember(
+			tenantId,
+			memberIds,
+			dateFrom,
+			dateTo,
 		);
 	}
 

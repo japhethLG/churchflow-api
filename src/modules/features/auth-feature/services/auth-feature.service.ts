@@ -73,5 +73,9 @@ export class AuthFeatureService {
 	// by the client (Firebase signOut + DELETE /api/auth/session).
 	async signOutEverywhere(firebaseUid: string): Promise<void> {
 		await this.firebase.getAuth().revokeRefreshTokens(firebaseUid);
+		// Drop any cached token verifications for this user so this instance
+		// stops honouring already-issued credentials immediately, rather than
+		// trusting them until the short verify-cache TTL lapses.
+		this.firebase.invalidateUser(firebaseUid);
 	}
 }

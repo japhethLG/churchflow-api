@@ -166,6 +166,59 @@ export class MemberRepository {
 		}));
 	}
 
+	// Active member counts per (tenant, role) across many tenants. One
+	// groupBy backs the super-admin tenant list's admin/member columns
+	// instead of two COUNTs per tenant.
+	async countsByTenantAndRole(
+		tenantIds: string[],
+	): Promise<Array<{ tenantId: string; role: MemberRole; count: number }>> {
+		if (tenantIds.length === 0) {
+			return [];
+		}
+		const rows = await this.prisma.member.groupBy({
+			by: ["tenantId", "role"],
+			where: { tenantId: { in: tenantIds } },
+			_count: { _all: true },
+		});
+		return rows.map((r) => ({
+			tenantId: r.tenantId,
+			role: r.role,
+			count: r._count._all,
+		}));
+	}
+
+	// Top-N admins per tenant for the preview avatars, fetched for many
+	// tenants in a single ordered query and bucketed in JS (admins per
+	// church are few, so this is bounded).
+	async findAdminsPreviewForTenants(
+		tenantIds: string[],
+		perTenant: number,
+	): Promise<Map<string, MemberAdminPreview[]>> {
+		const byTenant = new Map<string, MemberAdminPreview[]>();
+		if (tenantIds.length === 0) {
+			return byTenant;
+		}
+		const admins = await this.prisma.member.findMany({
+			where: { tenantId: { in: tenantIds }, role: MemberRole.ADMIN },
+			include: { user: { select: { displayName: true, photoUrl: true } } },
+			orderBy: { createdAt: "asc" },
+		});
+		for (const m of admins) {
+			const list = byTenant.get(m.tenantId) ?? [];
+			if (list.length < perTenant) {
+				list.push({
+					memberId: m.id,
+					firstName: m.firstName,
+					lastName: m.lastName,
+					displayName: m.user?.displayName ?? null,
+					photoUrl: m.user?.photoUrl ?? null,
+				});
+				byTenant.set(m.tenantId, list);
+			}
+		}
+		return byTenant;
+	}
+
 	// Every active membership for a given user, joined to tenant for the
 	// display name + slug. Used by super-admin user-management.
 	async findAllForUserWithTenants(

@@ -74,6 +74,12 @@ export interface TransactionSummaryOptions {
 	type?: TransactionType;
 	includeDeleted?: boolean;
 	onlyDeleted?: boolean;
+	// Whether to compute the per-month `byMonth` series. Defaults to true.
+	// Callers that only read the scalar totals (the member/transaction
+	// detail "lifetime" strips) pass `false` — this skips the monthly
+	// bucketing entirely, which is what makes an unbounded lifetime window
+	// cheap instead of fanning out one query per month across centuries.
+	withMonthly?: boolean;
 }
 
 export interface GiverByTypeBucket {
@@ -115,6 +121,14 @@ export interface GiversReportResult {
 	// the FE can render axis labels even when a giver has no gifts in
 	// some buckets.
 	months: string[];
+}
+
+// Per-member monthly giving series, aligned to a shared `months` axis.
+// Backs the members-list sparklines (replacing a fetch-500-and-bucket-in-JS
+// over-fetch on the client).
+export interface GivingTrendResult {
+	months: string[]; // YYYY-MM UTC, chronological
+	items: Array<{ memberId: string; monthlyTotals: number[] }>;
 }
 
 // Snapshot of gifts in the window that lack attribution. Powers the
@@ -246,6 +260,35 @@ export class TransactionRepository {
 		};
 	}
 
+	// Per-tenant totals across many tenants in one groupBy — backs the
+	// super-admin tenant list's gift columns instead of one aggregate per
+	// tenant row.
+	async aggregateByTenant(
+		tenantIds: string[],
+		filters: { since?: Date } = {},
+	): Promise<Map<string, TransactionAggregate>> {
+		const byTenant = new Map<string, TransactionAggregate>();
+		if (tenantIds.length === 0) {
+			return byTenant;
+		}
+		const rows = await this.prisma.transaction.groupBy({
+			by: ["tenantId"],
+			where: {
+				tenantId: { in: tenantIds },
+				...(filters.since ? { date: { gte: filters.since } } : {}),
+			},
+			_sum: { amount: true },
+			_count: { _all: true },
+		});
+		for (const r of rows) {
+			byTenant.set(r.tenantId, {
+				total: Number(r._sum.amount ?? 0),
+				count: r._count._all,
+			});
+		}
+		return byTenant;
+	}
+
 	async findById(
 		tenantId: string,
 		id: string,
@@ -327,20 +370,9 @@ export class TransactionRepository {
 			options,
 		);
 
-		// byMonth: one parallel aggregate per UTC month in the window.
-		// Uses the (tenantId, date) index. Replaces the previous "pull
-		// every row and bucket in JS" pattern — no row transfer, no JS
-		// loop over individual transactions. Bounded above by the
-		// window length (at most ~60 months for a 5-year report).
-		const monthStart = dayjs.utc(dateFrom).startOf("month");
-		const monthEndInclusive = dayjs.utc(dateTo).startOf("month");
-		const monthCount =
-			Math.max(0, monthEndInclusive.diff(monthStart, "month")) + 1;
-		const months = Array.from({ length: monthCount }, (_, i) =>
-			monthStart.add(i, "month"),
-		);
+		const withMonthly = options.withMonthly ?? true;
 
-		const [aggregate, byTypeRaw, byCampaignRaw, monthAggregates] =
+		const [aggregate, byTypeRaw, byCampaignRaw, monthlyRows] =
 			await Promise.all([
 				this.prisma.transaction.aggregate(
 					wrap({
@@ -367,30 +399,27 @@ export class TransactionRepository {
 						_count: { _all: true as const },
 					}),
 				),
-				Promise.all(
-					months.map((m) => {
-						const monthFrom = m.toDate();
-						const monthTo = m.endOf("month").toDate();
-						const monthWhere: Prisma.TransactionWhereInput = {
-							...(where as Prisma.TransactionWhereInput),
-							date: { gte: monthFrom, lte: monthTo },
-						};
-						return this.prisma.transaction.aggregate(
-							wrap({
-								where: monthWhere,
-								_sum: { amount: true as const },
-								_count: { _all: true as const },
-							}),
-						);
-					}),
-				),
+				// byMonth in a SINGLE windowed read. We select only
+				// {date, amount} (tiny transfer, served from the
+				// (tenantId, date) index) and bucket in JS — the sanctioned
+				// alternative to a date_trunc $queryRaw, which would bypass
+				// the soft-delete extension (backend CLAUDE.md §11). This
+				// replaces the previous one-aggregate-per-month fan-out, so
+				// a 5-year (or accidentally unbounded) range costs one query
+				// instead of dozens. Skipped entirely when the caller doesn't
+				// render a monthly series.
+				withMonthly
+					? this.prisma.transaction.findMany(
+							wrap({ where, select: { date: true, amount: true } }),
+						)
+					: Promise.resolve(
+							[] as Array<{ date: Date; amount: Prisma.Decimal }>,
+						),
 			]);
 
-		const byMonth = months.map((m, i) => ({
-			month: m.format("YYYY-MM"),
-			total: Number(monthAggregates[i]._sum.amount ?? 0),
-			count: monthAggregates[i]._count._all,
-		}));
+		const byMonth = withMonthly
+			? this.bucketByMonth(monthlyRows, dateFrom, dateTo)
+			: [];
 
 		// Resolve campaign titles + tombstone flags for the byCampaign
 		// breakdown. `withDeleted` so archived campaigns still surface a
@@ -662,6 +691,62 @@ export class TransactionRepository {
 		return { items, months };
 	}
 
+	// Monthly giving series for a bounded set of members (the members-list
+	// page passes the ids it's showing). One windowed read selecting
+	// {memberId, date, amount}, bucketed in JS — scoped by memberId so it
+	// stays small regardless of tenant size, and never $queryRaw (which
+	// would bypass the soft-delete extension).
+	async givingTrendByMember(
+		tenantId: string,
+		memberIds: string[],
+		dateFrom: Date,
+		dateTo: Date,
+	): Promise<GivingTrendResult> {
+		const monthStart = dayjs.utc(dateFrom).startOf("month");
+		const monthEndInclusive = dayjs.utc(dateTo).startOf("month");
+		const monthCount =
+			Math.max(0, monthEndInclusive.diff(monthStart, "month")) + 1;
+		const months = Array.from({ length: monthCount }, (_, i) =>
+			monthStart.add(i, "month").format("YYYY-MM"),
+		);
+		if (memberIds.length === 0) {
+			return { months, items: [] };
+		}
+
+		const monthIndex = new Map(months.map((m, i) => [m, i]));
+		const rows = await this.prisma.transaction.findMany({
+			where: {
+				tenantId,
+				memberId: { in: memberIds },
+				date: { gte: dateFrom, lte: dateTo },
+			},
+			select: { memberId: true, date: true, amount: true },
+		});
+
+		const totalsByMember = new Map<string, number[]>(
+			memberIds.map((id) => [id, new Array(monthCount).fill(0)]),
+		);
+		for (const row of rows) {
+			if (!row.memberId) {
+				continue;
+			}
+			const idx = monthIndex.get(dayjs.utc(row.date).format("YYYY-MM"));
+			const totals = totalsByMember.get(row.memberId);
+			if (totals && idx !== undefined) {
+				totals[idx] += Number(row.amount);
+			}
+		}
+
+		return {
+			months,
+			items: memberIds.map((memberId) => ({
+				memberId,
+				monthlyTotals:
+					totalsByMember.get(memberId) ?? new Array(monthCount).fill(0),
+			})),
+		};
+	}
+
 	async update(
 		_tenantId: string,
 		id: string,
@@ -737,6 +822,41 @@ export class TransactionRepository {
 			campaign: campaign ?? null,
 			campaignItem: campaignItem ?? null,
 		};
+	}
+
+	// Buckets a flat list of {date, amount} rows into a zero-filled,
+	// chronologically-ordered YYYY-MM series spanning [dateFrom, dateTo].
+	// Keeping the skeleton means months with no gifts still render a 0 on
+	// the FE trend chart.
+	private bucketByMonth(
+		rows: Array<{ date: Date; amount: Prisma.Decimal }>,
+		dateFrom: Date,
+		dateTo: Date,
+	): Array<{ month: string; total: number; count: number }> {
+		const monthStart = dayjs.utc(dateFrom).startOf("month");
+		const monthEndInclusive = dayjs.utc(dateTo).startOf("month");
+		const monthCount =
+			Math.max(0, monthEndInclusive.diff(monthStart, "month")) + 1;
+
+		const buckets = new Map<string, { total: number; count: number }>();
+		for (let i = 0; i < monthCount; i += 1) {
+			buckets.set(monthStart.add(i, "month").format("YYYY-MM"), {
+				total: 0,
+				count: 0,
+			});
+		}
+		for (const row of rows) {
+			const bucket = buckets.get(dayjs.utc(row.date).format("YYYY-MM"));
+			if (bucket) {
+				bucket.total += Number(row.amount);
+				bucket.count += 1;
+			}
+		}
+		return Array.from(buckets, ([month, v]) => ({
+			month,
+			total: v.total,
+			count: v.count,
+		}));
 	}
 
 	private buildWhere(

@@ -1,8 +1,10 @@
 import { ClaimsRefreshInterceptor } from "@infrastructure/config/interceptors/claims-refresh.interceptor";
 import { GlobalResponseInterceptor } from "@infrastructure/config/interceptors/global-response.interceptor";
+import { LoggingInterceptor } from "@infrastructure/config/interceptors/logging.interceptor";
 import { ValidationPipe, VersioningType } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory, Reflector } from "@nestjs/core";
+import compression from "compression";
 
 import { MainModule } from "./main.module";
 import { setupSwagger } from "./swagger.config";
@@ -15,8 +17,18 @@ async function bootstrap(): Promise<void> {
 	app.setGlobalPrefix("api");
 	app.enableVersioning({ type: VersioningType.URI, defaultVersion: "1" });
 
+	// gzip/deflate JSON responses. List/detail payloads compress ~70-90%,
+	// which matters on mobile (this serves a PWA/TWA). Disable with
+	// DISABLE_HTTP_COMPRESSION=true when fronted by a compressing reverse
+	// proxy (nginx/Cloud Run) to avoid double work.
+	if (process.env.DISABLE_HTTP_COMPRESSION !== "true") {
+		app.use(compression());
+	}
+
 	const reflector = app.get(Reflector);
 	app.useGlobalInterceptors(
+		// Outermost: times the full request (incl. the other interceptors).
+		new LoggingInterceptor(),
 		new ClaimsRefreshInterceptor(reflector),
 		new GlobalResponseInterceptor(),
 	);
@@ -39,7 +51,16 @@ async function bootstrap(): Promise<void> {
 		exposedHeaders: ["X-Claims-Refreshed"],
 	});
 
-	setupSwagger(app);
+	// Scalar/Swagger exposes the full API surface unauthenticated, so keep
+	// it out of production. FE type generation (`npm run api:types`) hits
+	// the dev server, which still mounts it. Force-enable in prod with
+	// ENABLE_SWAGGER=true if a gated docs host is ever needed.
+	if (
+		process.env.NODE_ENV !== "production" ||
+		process.env.ENABLE_SWAGGER === "true"
+	) {
+		setupSwagger(app);
+	}
 
 	const configService = app.get(ConfigService);
 	const port = configService.get<number>("PORT") ?? 8000;

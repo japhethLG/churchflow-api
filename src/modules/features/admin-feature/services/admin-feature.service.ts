@@ -5,7 +5,8 @@ import { MemberService } from "@modules/core/member/services/member.service";
 import { TenantService } from "@modules/core/tenant/services/tenant.service";
 import { TransactionService } from "@modules/core/transaction/services/transaction.service";
 import { UserService } from "@modules/core/user/services/user.service";
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { CACHE_MANAGER, type Cache } from "@nestjs/cache-manager";
+import { BadRequestException, Inject, Injectable } from "@nestjs/common";
 import {
 	AuditAction,
 	MemberRole,
@@ -72,9 +73,25 @@ export class AdminFeatureService {
 		private readonly userService: UserService,
 		private readonly userClaims: UserClaimsService,
 		private readonly auditService: AuditService,
+		@Inject(CACHE_MANAGER) private readonly cache: Cache,
 	) {}
 
+	// Platform-wide counts for the super-admin dashboard. 7 cross-tenant
+	// aggregates per call, so memoize for a minute — the numbers are coarse
+	// and a super-admin reloading the dashboard shouldn't re-run them all.
+	// toggleSuperAdmin() busts the key since it changes the super-admin count.
+	private static readonly PLATFORM_STATS_CACHE_KEY = "platform:stats";
+	private static readonly PLATFORM_STATS_TTL_MS = 60_000;
+
 	async getPlatformStats(): Promise<PlatformStats> {
+		return this.cache.wrap(
+			AdminFeatureService.PLATFORM_STATS_CACHE_KEY,
+			() => this.computePlatformStats(),
+			AdminFeatureService.PLATFORM_STATS_TTL_MS,
+		);
+	}
+
+	private async computePlatformStats(): Promise<PlatformStats> {
 		// Anchor "this month" in UTC so the cutoff doesn't drift when the
 		// process happens to run in a non-UTC container.
 		const monthStart = dayjs.utc().startOf("month").toDate();
@@ -162,6 +179,8 @@ export class AdminFeatureService {
 			isSuperAdmin: data.isSuperAdmin,
 		});
 		await this.userClaims.refreshFor(user.firebaseUid);
+		// The super-admin count just changed — drop the memoized stats.
+		await this.cache.del(AdminFeatureService.PLATFORM_STATS_CACHE_KEY);
 
 		await this.auditService.record({
 			tenantId: null,

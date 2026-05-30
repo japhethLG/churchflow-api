@@ -7,6 +7,7 @@ import { AuditService } from "@modules/core/audit/services/audit.service";
 import { MemberListResult } from "@modules/core/member/repository/member.repository";
 import { MemberService } from "@modules/core/member/services/member.service";
 import { PledgeService } from "@modules/core/pledge/services/pledge.service";
+import { GivingTrendResult } from "@modules/core/transaction/repository/transaction.repository";
 import { TransactionService } from "@modules/core/transaction/services/transaction.service";
 import { UserService } from "@modules/core/user/services/user.service";
 import {
@@ -21,6 +22,7 @@ import {
 	type MemberRole,
 	type MemberStatus,
 } from "@prisma/client";
+import dayjs from "@shared/dayjs";
 
 // Internal create input. Authorization is the controller's
 // responsibility; the service trusts pre-authorized inputs.
@@ -104,7 +106,9 @@ export class MemberFeatureService {
 				tenant.tenantId,
 				RANGE_FLOOR,
 				RANGE_CEILING,
-				{ memberId },
+				// Reads only lifetime scalars — skip the monthly series so the
+				// 1970→2999 window stays a single query, not one per month.
+				{ memberId, withMonthly: false },
 			),
 			this.pledgeService.getStatsForMember(tenant.tenantId, memberId),
 		]);
@@ -125,6 +129,29 @@ export class MemberFeatureService {
 					? pledgeStats.paidTotal / pledgeStats.pledgedTotal
 					: 0,
 		};
+	}
+
+	// Per-member monthly giving series for the members-list sparklines.
+	// Scoped to the member ids the page is showing and a rolling window of
+	// `months` (clamped 1..24), so a single server-side aggregate replaces
+	// the FE's fetch-500-transactions-and-bucket-in-JS over-fetch.
+	async givingTrend(
+		tenant: TenantContext,
+		options: { memberIds: string[]; months: number },
+	): Promise<GivingTrendResult> {
+		const window = Math.max(1, Math.min(options.months, 24));
+		const now = dayjs.utc();
+		const dateTo = now.endOf("month").toDate();
+		const dateFrom = now
+			.subtract(window - 1, "month")
+			.startOf("month")
+			.toDate();
+		return this.transactionService.givingTrendByMember(
+			tenant.tenantId,
+			options.memberIds,
+			dateFrom,
+			dateTo,
+		);
 	}
 
 	async previewMerge(

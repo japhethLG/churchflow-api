@@ -18,9 +18,13 @@ import {
 } from "@nestjs/swagger";
 
 import { CampaignFeatureService } from "../../services/campaign-feature.service";
-import { MyCampaignFiltersRequestDto } from "./requests";
+import {
+	MyCampaignFiltersRequestDto,
+	MyCampaignProgressBatchRequestDto,
+} from "./requests";
 import {
 	MyCampaignListResponseDto,
+	MyCampaignProgressBatchResponseDto,
 	MyCampaignProgressResponseDto,
 	MyCampaignResponseDto,
 	MyCampaignWithItemsResponseDto,
@@ -63,6 +67,36 @@ export class CampaignSelfController {
 				total: result.total,
 			},
 		};
+	}
+
+	// Batch progress lookup, mirroring the tenant controller's
+	// progress/batch. Static path declared before ":id" so Nest doesn't
+	// treat "progress" as a campaign id. Replaces the member dashboard /
+	// campaigns-list fan-out of N individual /progress calls.
+	@Get("progress/batch")
+	@ApiOperation({
+		summary: "Batch campaign progress (member view)",
+		description:
+			"Returns one entry per requested campaign id. Replaces the FE's fan-out of N individual /me/campaigns/:id/progress calls when rendering many progress bars.",
+	})
+	@ApiQuery({
+		name: "ids",
+		required: true,
+		type: String,
+		description: "Comma-separated campaign IDs. Max 100.",
+	})
+	@ApiOkResponse({ type: MyCampaignProgressBatchResponseDto })
+	async progressBatch(
+		@CurrentTenant() tenant: TenantContext,
+		@CurrentAbility() ability: AppAbility,
+		@Query() query: MyCampaignProgressBatchRequestDto,
+	): Promise<MyCampaignProgressBatchResponseDto> {
+		assertCan(ability, "read", "Campaign");
+		const items = await this.campaignFeatureService.progressMany(
+			tenant,
+			query.ids,
+		);
+		return { items };
 	}
 
 	@Get(":id")

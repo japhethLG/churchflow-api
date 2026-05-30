@@ -95,6 +95,22 @@ export class MemberService {
 		return this.memberRepository.findAdminsPreview(tenantId, take);
 	}
 
+	async countsByTenantAndRole(
+		tenantIds: string[],
+	): Promise<Array<{ tenantId: string; role: MemberRole; count: number }>> {
+		return this.memberRepository.countsByTenantAndRole(tenantIds);
+	}
+
+	async getAdminsPreviewForTenants(
+		tenantIds: string[],
+		perTenant: number,
+	): Promise<Map<string, MemberAdminPreview[]>> {
+		return this.memberRepository.findAdminsPreviewForTenants(
+			tenantIds,
+			perTenant,
+		);
+	}
+
 	async getAllForUser(userId: string): Promise<MemberWithTenantInfo[]> {
 		return this.memberRepository.findAllForUserWithTenants(userId);
 	}
