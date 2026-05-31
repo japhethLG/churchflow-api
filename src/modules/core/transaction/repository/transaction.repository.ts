@@ -460,10 +460,10 @@ export class TransactionRepository {
 			count,
 			avg: count > 0 ? total / count : 0,
 			firstDate: aggregate._min.date
-				? dayjs(aggregate._min.date).toISOString()
+				? dayjs.utc(aggregate._min.date).toISOString()
 				: null,
 			lastDate: aggregate._max.date
-				? dayjs(aggregate._max.date).toISOString()
+				? dayjs.utc(aggregate._max.date).toISOString()
 				: null,
 			byType: byTypeRaw.map((row) => {
 				const segTotal = Number(row._sum.amount ?? 0);

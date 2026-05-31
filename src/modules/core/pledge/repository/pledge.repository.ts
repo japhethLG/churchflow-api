@@ -312,7 +312,7 @@ export class PledgeRepository {
 		const resolvedDeadlineDate =
 			pledge.campaignItem?.deadline ?? pledge.campaign.deadline;
 		const resolvedDeadline = resolvedDeadlineDate
-			? dayjs(resolvedDeadlineDate).toISOString()
+			? dayjs.utc(resolvedDeadlineDate).toISOString()
 			: null;
 		const daysUntil = resolvedDeadlineDate
 			? dayjs
